@@ -1,0 +1,455 @@
+// ============================================================
+//  HOSPITAL CALL SYSTEM — AUDIO ENGINE  v5.0
+//  Uses REAL reference audio files for chime tones
+//  Ref1 (chime-general.mp4) → General/employee calls
+//  Ref2 (chime-code.mp4)    → Emergency code calls
+//  Speech remains dynamic via Text-to-Speech
+//  King Khalid Hospital, Hail
+// ============================================================
+
+const Audio = (() => {
+    let audioCtx = null;
+
+    // Preloaded audio buffers
+    let generalChimeBuffer = null;
+    let codeChimeBuffer = null;
+    let buffersLoading = false;
+    let buffersLoaded = false;
+
+    // How many seconds of each file to play (ONLY the chime/tone, NO speech)
+    const GENERAL_CHIME_DURATION = 2.5;  // First 2.5s of ref1 (tone only, no speech)
+    const CODE_CHIME_DURATION = 2.8;     // First 2.8s of ref2 (tone only, no speech)
+
+    // Base path for audio files
+    const AUDIO_BASE = (() => {
+        const scripts = document.querySelectorAll('script[src*="audio.js"]');
+        if (scripts.length > 0) {
+            const src = scripts[0].src;
+            return src.substring(0, src.lastIndexOf('/js/')) + '/audio/';
+        }
+        // Fallback: try to detect from page location
+        const path = window.location.pathname;
+        const base = path.substring(0, path.indexOf('/', 1) + 1);
+        return base + 'assets/audio/';
+    })();
+
+    function getCtx() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return audioCtx;
+    }
+
+    // ============================================================
+    //  PRELOAD AUDIO BUFFERS
+    //  Fetches and decodes both chime files on first use
+    // ============================================================
+    async function loadBuffers() {
+        if (buffersLoaded || buffersLoading) return;
+        buffersLoading = true;
+
+        const ctx = getCtx();
+
+        try {
+            const [resp1, resp2] = await Promise.all([
+                fetch(AUDIO_BASE + 'chime-general.mp4'),
+                fetch(AUDIO_BASE + 'chime-code.mp4')
+            ]);
+
+            const [buf1, buf2] = await Promise.all([
+                resp1.arrayBuffer(),
+                resp2.arrayBuffer()
+            ]);
+
+            const [decoded1, decoded2] = await Promise.all([
+                ctx.decodeAudioData(buf1),
+                ctx.decodeAudioData(buf2)
+            ]);
+
+            generalChimeBuffer = decoded1;
+            codeChimeBuffer = decoded2;
+            buffersLoaded = true;
+            console.log('[Audio] Chime buffers loaded — general:', 
+                generalChimeBuffer.duration.toFixed(1) + 's, code:', 
+                codeChimeBuffer.duration.toFixed(1) + 's');
+        } catch (e) {
+            console.warn('[Audio] Could not load chime files, falling back to synthesized:', e);
+            buffersLoading = false;
+        }
+    }
+
+    // Start loading immediately
+    if (document.readyState === 'complete') {
+        loadBuffers();
+    } else {
+        window.addEventListener('load', loadBuffers);
+    }
+    // Also load on first user interaction (required for AudioContext)
+    document.addEventListener('click', () => { loadBuffers(); }, { once: true });
+
+    // ============================================================
+    //  PLAY AUDIO BUFFER (only first N seconds)
+    //  Plays a portion of a decoded audio buffer
+    // ============================================================
+    function playBuffer(buffer, maxDuration, onComplete) {
+        const ctx = getCtx();
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+
+        // Create gain node for smooth fade-out at the end
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(1.0, ctx.currentTime);
+
+        const playDuration = Math.min(maxDuration, buffer.duration);
+
+        // Fade out in the last 0.5 seconds to avoid click
+        const fadeStart = Math.max(0, playDuration - 0.5);
+        gainNode.gain.setValueAtTime(1.0, ctx.currentTime + fadeStart);
+        gainNode.gain.linearRampToValueAtTime(0.0, ctx.currentTime + playDuration);
+
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        source.start(0, 0, playDuration + 0.1);
+
+        if (onComplete) {
+            setTimeout(onComplete, playDuration * 1000);
+        }
+    }
+
+    // ============================================================
+    //  BELL TONE — fallback synthesized tone (kept for compatibility)
+    // ============================================================
+    function bellTone(freq, startTime, duration, volume) {
+        const ctx = getCtx();
+        const t = ctx.currentTime + startTime;
+        const vol = volume || 1.0;
+
+        const osc = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const osc3 = ctx.createOscillator();
+
+        osc.type = 'sine';
+        osc2.type = 'sine';
+        osc3.type = 'triangle';
+
+        osc.frequency.setValueAtTime(freq, t);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.998, t + duration);
+
+        osc2.frequency.setValueAtTime(freq * 2.0, t);
+        osc2.frequency.exponentialRampToValueAtTime(freq * 1.997, t + duration);
+
+        osc3.frequency.setValueAtTime(freq * 4.0, t);
+
+        const gain1 = ctx.createGain();
+        const gain2 = ctx.createGain();
+        const gain3 = ctx.createGain();
+
+        gain1.gain.setValueAtTime(0, t);
+        gain1.gain.linearRampToValueAtTime(0.32 * vol, t + 0.006);
+        gain1.gain.setValueAtTime(0.32 * vol, t + 0.01);
+        gain1.gain.exponentialRampToValueAtTime(0.16 * vol, t + duration * 0.08);
+        gain1.gain.exponentialRampToValueAtTime(0.08 * vol, t + duration * 0.27);
+        gain1.gain.exponentialRampToValueAtTime(0.04 * vol, t + duration * 0.65);
+        gain1.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+        gain2.gain.setValueAtTime(0, t);
+        gain2.gain.linearRampToValueAtTime(0.12 * vol, t + 0.006);
+        gain2.gain.exponentialRampToValueAtTime(0.05 * vol, t + duration * 0.10);
+        gain2.gain.exponentialRampToValueAtTime(0.02 * vol, t + duration * 0.35);
+        gain2.gain.exponentialRampToValueAtTime(0.001, t + duration * 0.7);
+
+        gain3.gain.setValueAtTime(0, t);
+        gain3.gain.linearRampToValueAtTime(0.03 * vol, t + 0.005);
+        gain3.gain.exponentialRampToValueAtTime(0.001, t + duration * 0.20);
+
+        const delay = ctx.createDelay(0.5);
+        delay.delayTime.value = 0.045;
+        const feedback = ctx.createGain();
+        feedback.gain.value = 0.22;
+        const dGain = ctx.createGain();
+        dGain.gain.value = 0.12;
+
+        const master = ctx.createGain();
+        master.gain.value = 0.85;
+
+        [gain1, gain2, gain3].forEach(g => g.connect(master));
+        gain1.connect(delay);
+        delay.connect(feedback);
+        feedback.connect(delay);
+        delay.connect(dGain);
+        dGain.connect(master);
+        master.connect(ctx.destination);
+
+        osc.connect(gain1);  osc.start(t);  osc.stop(t + duration + 0.2);
+        osc2.connect(gain2); osc2.start(t); osc2.stop(t + duration * 0.75);
+        osc3.connect(gain3); osc3.start(t); osc3.stop(t + duration * 0.3);
+    }
+
+    // ============================================================
+    //  SYNTHESIZED FALLBACK CHIMES
+    //  Used only when audio files haven't loaded yet
+    // ============================================================
+    function synthGeneralChime(onComplete) {
+        bellTone(246.94, 0.00, 3.2, 0.85);
+        bellTone(311.13, 0.30, 2.9, 1.00);
+        bellTone(392.00, 0.60, 2.8, 0.90);
+        bellTone(493.88, 0.90, 2.5, 0.88);
+        bellTone(392.00, 1.20, 2.3, 0.70);
+        if (onComplete) setTimeout(onComplete, 3500);
+    }
+
+    function synthCodeChime(onComplete) {
+        bellTone(196.00, 0.00, 0.40, 0.75);
+        bellTone(293.66, 0.10, 0.40, 0.80);
+        bellTone(246.94, 0.20, 0.40, 0.75);
+        bellTone(622.25, 0.30, 0.40, 0.85);
+        bellTone(293.66, 0.40, 0.40, 0.75);
+        bellTone(1244.51, 0.50, 0.35, 0.65);
+        bellTone(277.18, 0.60, 0.40, 0.75);
+        bellTone(493.88, 0.70, 0.60, 0.85);
+        bellTone(554.37, 0.90, 1.5, 0.90);
+        bellTone(440.00, 1.60, 2.5, 0.80);
+        if (onComplete) setTimeout(onComplete, 4200);
+    }
+
+    // ============================================================
+    //  GENERAL CALL CHIME (Reference File 1)
+    //  Plays beginning tone of chime-general.mp4
+    //  For: employee calls, department calls, general announcements
+    // ============================================================
+    function dingDong(onComplete) {
+        if (generalChimeBuffer) {
+            playBuffer(generalChimeBuffer, GENERAL_CHIME_DURATION, onComplete);
+        } else {
+            // Fallback to synthesized if file not loaded
+            synthGeneralChime(onComplete);
+        }
+    }
+
+    // Keep airportChime as alias for backward compatibility
+    function airportChime(startOffset, onComplete) {
+        // startOffset is ignored when using real audio files
+        dingDong(onComplete);
+    }
+
+    // ============================================================
+    //  EMERGENCY CODE CHIME (Reference File 2)
+    //  Plays beginning tone of chime-code.mp4
+    //  For: Code Blue, Code Red, Code Pink, Code Black, etc.
+    // ============================================================
+    function emergencyAlert(onComplete) {
+        if (codeChimeBuffer) {
+            playBuffer(codeChimeBuffer, CODE_CHIME_DURATION, onComplete);
+        } else {
+            // Fallback to synthesized if file not loaded
+            synthCodeChime(onComplete);
+        }
+    }
+
+    // ============================================================
+    //  PHRASE SPLITTER
+    // ============================================================
+    function splitPhrases(text) {
+        return text
+            .replace(/\.\.\./g, '|||')
+            .replace(/…/g, '|||')
+            .replace(/,\s+/g, '|||')
+            .replace(/\.\s+([A-Z])/g, '.||| $1')
+            .replace(/\.\s+([ء-ي])/g, '.||| $1')
+            .split('|||')
+            .map(s => s.trim())
+            .filter(s => s.length > 0);
+    }
+
+    // ============================================================
+    //  SPEAK CHUNK (single utterance)
+    // ============================================================
+    function speakChunk(text, voice, rate, pitch, lang, onEnd) {
+        if (!window.speechSynthesis) { if (onEnd) onEnd(); return; }
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = lang || 'en-US';
+        u.rate = rate;
+        u.pitch = pitch;
+        u.volume = 1.0;
+        if (voice) u.voice = voice;
+        u.onend = () => { if (onEnd) onEnd(); };
+        u.onerror = () => { if (onEnd) onEnd(); };
+        window.speechSynthesis.speak(u);
+    }
+
+    function speakPhrases(phrases, voice, rate, pitch, pauseMs, lang, onAllDone) {
+        let idx = 0;
+        function next() {
+            if (idx >= phrases.length) { if (onAllDone) onAllDone(); return; }
+            const phrase = phrases[idx++];
+            speakChunk(phrase, voice, rate, pitch, lang, () => {
+                if (idx < phrases.length) {
+                    setTimeout(next, pauseMs);
+                } else {
+                    if (onAllDone) onAllDone();
+                }
+            });
+        }
+        next();
+    }
+
+    // ============================================================
+    //  VOICE PICKER (English + Arabic)
+    // ============================================================
+    function pickVoice(gender, lang) {
+        const voices = window.speechSynthesis.getVoices();
+        const isAr = lang && lang.startsWith('ar');
+        const langPrefix = isAr ? 'ar' : 'en';
+        const filtered = voices.filter(v => v.lang.startsWith(langPrefix));
+
+        if (!filtered.length) {
+            const fallback = voices.filter(v => v.lang.startsWith(isAr ? 'ar' : 'en'));
+            if (fallback.length) return fallback[0];
+            return voices.length ? voices[0] : null;
+        }
+
+        if (isAr) {
+            const arNames = gender === 'male'
+                ? ['majed', 'maged', 'tarik', 'hadi', 'male', 'أحمد']
+                : ['laila', 'maryam', 'zeina', 'hoda', 'amira', 'female', 'فاطمة'];
+            const match = filtered.find(v => arNames.some(n => v.name.toLowerCase().includes(n)));
+            if (match) return match;
+            return gender === 'male' ? filtered[0] : (filtered[1] || filtered[0]);
+        }
+
+        const maleNames = ['david', 'james', 'mark', 'guy', 'daniel', 'alex', 'george', 'richard', 'matthew', 'male'];
+        const femaleNames = ['zira', 'samantha', 'karen', 'susan', 'victoria', 'olivia', 'aria', 'jenny', 'natasha', 'hazel', 'female'];
+        const names = gender === 'male' ? maleNames : femaleNames;
+        const match = filtered.find(v => names.some(n => v.name.toLowerCase().includes(n)));
+        if (match) return match;
+        return gender === 'male' ? filtered[0] : (filtered[1] || filtered[0]);
+    }
+
+    // ============================================================
+    //  READ AUDIO SETTINGS
+    // ============================================================
+    function getAudioSettings() {
+        const rate = parseFloat(document.getElementById('sRt')?.value || document.getElementById('sRt2')?.value || '0.62');
+        const pitchM = parseFloat(document.getElementById('sPM')?.value || document.getElementById('sPM2')?.value || '0.78');
+        const pitchF = parseFloat(document.getElementById('sPF')?.value || document.getElementById('sPF2')?.value || '1.10');
+        const repeat = parseInt(document.getElementById('sRpt')?.value || '2');
+        const pauseMs = parseInt(document.getElementById('sPause')?.value || '700');
+        return { rate, pitchM, pitchF, repeat, pauseMs };
+    }
+
+    // ============================================================
+    //  SPEAK — English only
+    //  For emergency codes: "Attention please" x2 (same female voice) + announcement
+    //  For normal calls: just the announcement directly
+    //  Always uses female voice, no Arabic
+    // ============================================================
+    function speak(text, gender, isEmergency, onDone, lang) {
+        if (!window.speechSynthesis) { if (onDone) onDone(); return; }
+        window.speechSynthesis.cancel();
+
+        // Skip Arabic speech entirely
+        const speechLang = lang || 'en-US';
+        if (speechLang.startsWith('ar')) {
+            if (onDone) onDone();
+            return;
+        }
+
+        const { rate, pitchM, pitchF, repeat, pauseMs } = getAudioSettings();
+
+        // Always use female voice and pitch for consistency
+        const effectivePitch = pitchF;
+        const voice = pickVoice('female', speechLang);
+
+        const fullText = (typeof fixPronunciation === 'function') ? fixPronunciation(text) : text;
+        const mainPhrases = splitPhrases(fullText);
+
+        // For emergency codes: add "Attention please" x2 with the SAME female voice
+        let allPhrases;
+        if (isEmergency) {
+            allPhrases = ['Attention please', 'Attention please', ...mainPhrases];
+        } else {
+            allPhrases = mainPhrases;
+        }
+
+        let runCount = 0;
+        function doRun() {
+            speakPhrases(allPhrases, voice, rate, effectivePitch, pauseMs, speechLang, () => {
+                runCount++;
+                if (runCount < repeat) {
+                    setTimeout(doRun, 1200);
+                } else {
+                    hideAllSpeaking();
+                    if (onDone) onDone();
+                }
+            });
+        }
+        setTimeout(doRun, 200);
+    }
+
+    // ============================================================
+    //  ANNOUNCE — English only sequence
+    //  Emergency/Code: code-chime (ref2) → English speech
+    //  Normal:         general-chime (ref1) → English speech
+    //  NO Arabic speech, NO "Attention please"
+    // ============================================================
+    function announce(textEn, gender, type, onDone, textAr) {
+        cancelSpeech();
+        const isEmergency = (type === 'emergency' || type === 'code');
+
+        function speakEnglish(cb) {
+            if (textEn && textEn.trim()) {
+                speak(textEn, gender, isEmergency, cb, 'en-US');
+            } else {
+                if (cb) cb();
+            }
+        }
+
+        // After initial chime: speak English only, then play chime again
+        function afterChime() {
+            speakEnglish(() => {
+                if (isEmergency) {
+                    emergencyAlert(() => {
+                        if (onDone) onDone();
+                    });
+                } else {
+                    dingDong(() => {
+                        if (onDone) onDone();
+                    });
+                }
+            });
+        }
+
+        if (isEmergency) {
+            // Emergency/Code: play CODE chime (ref2) → then English speech
+            emergencyAlert(afterChime);
+        } else {
+            // Normal: play GENERAL chime (ref1) → then English speech
+            dingDong(afterChime);
+        }
+    }
+
+    function cancelSpeech() {
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+    }
+
+    function hideAllSpeaking() {
+        document.querySelectorAll('.speaking-indicator').forEach(el => el.classList.remove('active'));
+    }
+
+    if (window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+        window.speechSynthesis.getVoices();
+    }
+
+    return {
+        announce,
+        speak,
+        bellTone,
+        dingDong,
+        emergencyAlert,
+        cancelSpeech,
+        pickVoice,
+    };
+})();
