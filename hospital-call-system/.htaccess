@@ -1,0 +1,54 @@
+# ============================================================
+#  HOSPITAL CALL SYSTEM — Apache .htaccess  v3.1
+#  ----------------------------------------------------------------
+#  Enables URL rewriting, sets UTF-8 as the default charset,
+#  blocks access to sensitive files, and adds basic security
+#  headers. Works on shared hosting (InfinityFree, etc.) AND
+#  inside the Docker image.
+# ============================================================
+
+# Default document — landing page
+DirectoryIndex index.php index.html
+
+# UTF-8 by default
+AddDefaultCharset UTF-8
+
+# Allow pretty URLs (no actual rewrite rules needed yet, but the
+# module must be on so that future rules work without code changes)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Do NOT rewrite real files/directories (so /api/*.php still works)
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+</IfModule>
+
+# Security: deny access to sensitive files
+<FilesMatch "(^\.|composer\.(json|lock)|package(-lock)?\.json|\.sql$|\.md$|Dockerfile|docker-compose\.yml|render\.yaml|nixpacks\.toml|\.dockerignore)">
+    Require all denied
+</FilesMatch>
+
+# Security headers (where mod_headers is available)
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    # Allow audio playback from same origin
+    Header set Permissions-Policy "autoplay=(self), microphone=()"
+</IfModule>
+
+# Make sure PHP files are served with the correct MIME type
+<IfModule mod_mime.c>
+    AddType application/vnd.apple.mpegurl .m4a .mp4
+    AddType audio/mp4 .m4a
+</IfModule>
+
+# Cache static assets aggressively (audio chime files never change)
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType audio/mp4 "access plus 1 year"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/x-icon "access plus 1 month"
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+</IfModule>

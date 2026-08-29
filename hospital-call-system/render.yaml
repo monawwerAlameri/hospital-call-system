@@ -1,0 +1,32 @@
+# ============================================================
+#  Render Blueprint — Hospital Call System v3.1
+#  ----------------------------------------------------------------
+#  This file allows one-click deployment on Render.
+#  After pushing this repo to GitHub, open:
+#      https://render.com/deploy
+#  Render will detect this blueprint and prompt for env vars.
+# ============================================================
+services:
+  - type: web
+    name: hospital-call-system
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      # Database — these are REQUIRED. You will be prompted to fill them in.
+      # Recommended free MySQL providers:
+      #   - Aiven (https://aiven.io) — 5 GB free MySQL, no credit card needed
+      #   - db4free.net (https://www.db4free.net) — 200 MB free, easiest signup
+      #   - TiDB Cloud (https://tidbcloud.com) — 5 GB free, MySQL-compatible
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false
+      - key: DB_NAME
+        value: hospital_call_system

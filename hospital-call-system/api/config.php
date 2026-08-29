@@ -1,20 +1,34 @@
 <?php
-define('DB_HOST', '127.0.0.1');
-define('DB_USER', 'root');
-define('DB_PASS', 'root');
-define('DB_NAME', 'hospital_call_system');
-define('DB_PORT', 3306);
+// ============================================================
+//  HOSPITAL CALL SYSTEM — Database Configuration  v3.1
+//  King Khalid Hospital, Hail
+//  ----------------------------------------------------------------
+//  Reads DB credentials from environment variables (for cloud
+//  deployments like Render / Railway / Heroku / shared hosting)
+//  and falls back to local dev defaults when env vars are absent.
+// ============================================================
+
+define('DB_HOST', getenv('DB_HOST') ?: '127.0.0.1');
+define('DB_USER', getenv('DB_USER') ?: 'root');
+define('DB_PASS', getenv('DB_PASS') ?: 'root');
+define('DB_NAME', getenv('DB_NAME') ?: 'hospital_call_system');
+define('DB_PORT', (int)(getenv('DB_PORT') ?: 3306));
 
 function getDB() {
     mysqli_report(MYSQLI_REPORT_OFF);
     $conn = @new mysqli(DB_HOST, DB_USER, DB_PASS, '', DB_PORT);
     if ($conn->connect_error) {
-        header('Content-Type: application/json');
-        die(json_encode(['success' => false, 'error' => 'Database offline']));
+        header('Content-Type: application/json; charset=utf-8');
+        die(json_encode(['success' => false, 'error' => 'Database offline: ' . $conn->connect_error]));
     }
-    
-    $conn->query("CREATE DATABASE IF NOT EXISTS " . DB_NAME . " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-    $conn->select_db(DB_NAME);
+
+    // Try to create database; some free hosts (e.g. db4free) don't allow CREATE DATABASE,
+    // in which case the database must already exist on the server.
+    @$conn->query("CREATE DATABASE IF NOT EXISTS " . DB_NAME . " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+    if (!$conn->select_db(DB_NAME)) {
+        header('Content-Type: application/json; charset=utf-8');
+        die(json_encode(['success' => false, 'error' => 'Database "' . DB_NAME . '" not found. Please create it in your hosting panel first.']));
+    }
     $conn->set_charset('utf8mb4');
 
     $tables = [

@@ -1,0 +1,19 @@
+# ============================================================
+#  Railway/Nixpacks config — Hospital Call System v3.1
+#  ----------------------------------------------------------------
+#  This file is used when deploying to Railway (railway.app).
+#  Railway detects Nixpacks automatically and uses this config.
+#  We still use the Dockerfile above via the docker runtime, since
+#  PHP + Apache is much easier to set up via Docker than Nixpacks.
+# ============================================================
+[phases.setup]
+nixPkgs = ['php83', 'php83Extensions.mysqli', 'apacheHttpd']
+
+[phases.build]
+cmds = [
+  'cp -r . /app/',
+  'chmod -R 755 /app'
+]
+
+[start]
+cmd = 'apache2 -D FOREGROUND'

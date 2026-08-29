@@ -1,0 +1,41 @@
+# ============================================================
+#  Docker Compose — local testing for Hospital Call System v3.1
+#  ----------------------------------------------------------------
+#  Run:  docker-compose up --build
+#  Then open:  http://localhost:8080
+# ============================================================
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: hcs-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - db
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=hospital
+      - DB_PASS=hospital_pass
+      - DB_NAME=hospital_call_system
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    container_name: hcs-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpass
+      - MYSQL_DATABASE=hospital_call_system
+      - MYSQL_USER=hospital
+      - MYSQL_PASSWORD=hospital_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - hcs-db-data:/var/lib/mysql
+      - ./hospital_call_system (2).sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    restart: unless-stopped
+
+volumes:
+  hcs-db-data:

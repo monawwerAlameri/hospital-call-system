@@ -1,0 +1,19 @@
+# Files & directories we don't want in the Docker image
+.git
+.gitignore
+.github
+*.md
+!README_v3.1.md
+!DEPLOYMENT.md
+scripts/
+*.zip
+*.tar.gz
+*.log
+.DS_Store
+Thumbs.db
+docker-compose.yml
+render.yaml
+nixpacks.toml
+database/
+.env
+.env.local
