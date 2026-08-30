@@ -1,204 +1,210 @@
-# 🚀 دليل النشر — Hospital Call System v3.1
+# 🚀 دليل النشر على Render — Hospital Call System v3.1
 
-هذا الدليل يشرح كيفية نشر نظام نداءات مستشفى الملك خالد على استضافة مجانية مع الحفاظ على نفس قاعدة البيانات.
-
----
-
-## 📋 الخيارات المتاحة
-
-| الخيار | الميزة | العيوب | التقييم |
-|-------|--------|-------|---------|
-| **Render + Aiven** | مجاني تماماً، MySQL 5GB، SSL تلقائي | يتطلب تأكيد بريد فقط | ⭐⭐⭐⭐⭐ الأفضل |
-| **Render + db4free** | أسهل تسجيل، لا بريد مطلوب | 200MB فقط، بطيء | ⭐⭐⭐ |
-| **Railway + Railway MySQL** | إعداد منقرة واحدة | يحتاج بطاقة للتحقق | ⭐⭐⭐⭐ |
-| **InfinityFree** | PHP مجاني + MySQL | إعلانات، FTP يدوي | ⭐⭐ |
-
-**النوصية: استخدم Render + Aiven** (الخيار الأول).
+> ✅ المستودع الآن **عام** (public) على GitHub  
+> 🔗 https://github.com/monawwerAlameri/hospital-call-system  
+> ✅ بيانات Aiven MySQL مُعدّة مسبقاً في `render.yaml`  
+> ✅ شهادة SSL (ca.pem) مُضمّنة في `api/ca.pem`
 
 ---
 
-## 🎯 الطريقة 1: Render + Aiven (الأفضل والمجاني)
+## 🎯 الخطوات (5 دقائق فقط)
 
-### الخطوة 1: إنشاء قاعدة بيانات MySQL مجانية على Aiven
+### 1️⃣ ادخل إلى Render وسجّل حساب
 
-1. اذهب إلى https://aiven.io واضغط **Sign up free**
-2. أدخل بريدك وكلمة المرور (لا حاجة لبطاقة ائتمان)
-3. بعد الدخول، اضغط **Create service**
-4. اختر **MySQL**
-5. اختر الخطة **Free-0-5GB** (مجانية بالكامل)
-6. اختر **Region** قريب منك (مثلاً `google-northamerica-northeast1`)
-7. اضغط **Create free service**
-8. انتظر دقيقتين حتى يصبح الـ Service حالة `Running`
-9. اضغط على الـ Service، ثم انسخ البيانات التالية من صفحة **Overview**:
-   - **Host** (مثلاً: `mysql-xxxxx-xxxx.aivencloud.com`)
-   - **Port** (عادةً `12345` أو رقم آخر)
-   - **User** (عادةً `avnadmin`)
-   - **Password** (اضغط على أيقونة العين لعرضه)
-   - **Database Name** (عادةً `defaultdb`)
+- افتح https://render.com
+- اضغط **Sign up** أو **Get Started**
+- سجّل باستخدام حساب GitHub (الأسرع)
 
-### الخطوة 2: رفع الكود إلى GitHub
+---
 
-```bash
-cd hospital-call-system
-git init
-git add .
-git commit -m "Hospital Call System v3.1 — ready for deployment"
-git branch -M main
-git remote add origin https://github.com/USERNAME/hospital-call-system.git
-git push -u origin main
-```
+### 2️⃣ أنشئ Web Service جديد
 
-> إذا أردت، يمكنني رفع الكود إلى المستودع الموجود على GitHub الخاص بك
-> (`github.com/monawwerAlameri/hospital-call-system`).
+- من لوحة التحكم، اضغط **New +** (أعلى اليمين)
+- اختر **Web Service**
+- اضغط **Build and deploy from a Git repository**
+- اضغط **Next**
 
-### الخطوة 3: النشر على Render
+---
 
-1. اذهب إلى https://render.com واضغط **Sign up** (يمكنك التسجيل بحساب GitHub)
-2. اضغط **New +** ← **Web Service**
-3. اختر مستودع GitHub الذي رفعت الكود إليه
-4. اضغط **Apply** على شاشة الـ Blueprint (Render سيكتشف ملف `render.yaml` تلقائياً)
-5. Render سيطلب منك تعبئة متغيرات البيئة التالية:
+### 3️⃣ اربط المستودع
+
+- في خانة **Public Git repository**، الصق:
+  ```
+  https://github.com/monawwerAlameri/hospital-call-system
+  ```
+- اضغط **Continue**
+
+> 💡 إذا ظهر خيار **"Connect account"** أو طلب صلاحيات GitHub، اضغط عليه وأعطه صلاحية الوصول للمستودع.
+
+---
+
+### 4️⃣ املأ الإعدادات (Render سيكتشف `render.yaml` تلقائياً)
+
+| الحقل | القيمة |
+|------|--------|
+| **Name** | `hospital-call-system` |
+| **Region** | أقرب منطقة (مثلاً Frankfurt أو Oregon) |
+| **Branch** | `main` |
+| **Runtime** | Docker (تلقائي) |
+| **Instance Type** | Free |
+
+ثم في قسم **Environment Variables**، Render سيطلب منك فقط إدخال:
 
 | المتغير | القيمة |
 |---------|--------|
-| `DB_HOST` | (الـ Host من Aiven — مثلاً `mysql-xxxxx.aivencloud.com`) |
-| `DB_PORT` | (الـ Port من Aiven — مثلاً `12345`) |
-| `DB_USER` | `avnadmin` (أو ما يعطيك إياه Aiven) |
-| `DB_PASS` | (كلمة المرور من Aiven) |
-| `DB_NAME` | `defaultdb` (أو اسم الـ database الذي أنشأته على Aiven) |
+| `DB_PASS` | (كلمة مرور Aiven — `AVNS_...` التي أعطاك إياها Aiven) |
 
-6. اضغط **Create Web Service**
-7. انتظر 3-5 دقائق حتى ينتهي البناء (Build) — سترى اللون الأخضر ✅
-
-### الخطوة 4: تهيئة قاعدة البيانات
-
-1. بعد اكتمال النشر، اضغط على الرابط الذي يعطيك Render (مثلاً `https://hospital-call-system-xxxx.onrender.com`)
-2. ستظهر صفحة الـ landing
-3. اذهب إلى: `https://hospital-call-system-xxxx.onrender.com/db-check.php`
-4. ستظهر نتائج فحص الاتصال — تأكد أن كل شيء ✅
-5. هذا سيقوم تلقائياً بإنشاء الجداول وإضافة البيانات الأولية (الكودات، الأقسام، إعدادات الزيارة)
-
-### الخطوة 5: استخدام النظام
-
-- افتح: `https://hospital-call-system-xxxx.onrender.com/`
-- اضغط **Launch System** → ستنتقل مباشرة للوحة التحكم بدون تسجيل دخول
-- جرب الأكواد (Code Blue, Code Red...) — ستسمع التنسيق الجديد: "Code Blue in Emergency Room"
-- جرب صفحة **Visiting Hours** في السايدبار ← قسم **Smart Features**
+> باقي المتغيرات (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME`, `DB_SSL`) موجودة مسبقاً في `render.yaml`.
 
 ---
 
-## 🎯 الطريقة 2: Railway (الأسهل إذا كان لديك بطاقة)
+### 5️⃣ اضغط Create Web Service
 
-1. اذهب إلى https://railway.app واضغط **Sign in with GitHub**
-2. اضغط **New Project** ← **Deploy from GitHub repo**
-3. اختر مستودعك
-4. Railway سيكتشف `Dockerfile` تلقائياً
-5. اضغط **Add Variable** لكل من:
-   - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`
-6. لإنشاء قاعدة البيانات: اضغط **New** ← **Database** ← **Add MySQL**
-7. Railway سيعطيك متغيرات الـ DB تلقائياً — انسخها إلى متغيرات الـ Web Service
-8. النشر سيبدأ تلقائياً
+- Render سيبدأ بـ:
+  1. سحب الكود من GitHub
+  2. بناء صورة Docker (Apache + PHP 8.3 + mysqli)
+  3. رفعها على Render
+- المدة المتوقعة: 3-5 دقائق
+- سترى **Logs** مباشرة أثناء البناء
 
 ---
 
-## 🎯 الطريقة 3: InfinityFree (لمن لا يريد Docker)
+### 6️⃣ بعد اكتمال النشر
 
-1. اذهب إلى https://infinityfree.com وسجل حساباً مجانياً
-2. في لوحة التحكم، اضغط **MySQL Databases** ← **Create New Database**
-   - اسم القاعدة: `hospital_call_system`
-   - أنشئ مستخدم وامنحه جميع الصلاحيات على هذه القاعدة
-3. اضغط **File Manager** أو استخدم FTP (معلومات FTP في لوحة التحكم)
-4. ارفع كل ملفات المشروع إلى مجلد `htdocs` أو `public_html`
-5. اذهب إلى phpMyAdmin على InfinityFree وافتح قاعدة `hospital_call_system`
-6. اذهب إلى **Import** وارفع ملف `hospital_call_system (2).sql`
-7. عدّل ملف `api/config.php` يدوياً إذا لزم الأمر (لكن الـ env vars الافتراضية ستعمل لأن InfinityFree يضبطها تلقائياً)
-
-> ملاحظة: على InfinityFree، استبدل الأسطر الأولى في `api/config.php`:
-> ```php
-> define('DB_HOST', 'sqlXXX.infinityfree.com');  // من لوحة التحكم
-> define('DB_USER', 'if0_XXXXXXXXXX');
-> define('DB_PASS', 'your_password');
-> define('DB_NAME', 'if0_XXXXXXXXXX_hospital_call_system');
-> ```
-
----
-
-## 🔧 الاختبار المحلي قبل النشر (Docker)
-
-إذا أردت اختبار النشر محلياً قبل رفعه:
-
-```bash
-cd hospital-call-system
-docker-compose up --build
+سيظهر لك رابط بصيغة:
+```
+https://hospital-call-system-xxxx.onrender.com
 ```
 
-ثم افتح http://localhost:8080 في المتصفح.
+#### 🔍 تحقق من الاتصال بقاعدة البيانات:
 
-- التطبيق: http://localhost:8080
-- فحص الـ DB: http://localhost:8080/db-check.php
-- MySQL سيكون على localhost:3307 (root:rootpass)
+افتح الرابط التالي في المتصفح:
+```
+https://hospital-call-system-xxxx.onrender.com/db-check.php
+```
 
----
+ستظهر صفحة نصية تحتوي على:
+- إعدادات الـ DB
+- محاولة الاتصال بـ Aiven MySQL
+- إنشاء الجداول تلقائياً (16 جدول)
+- إضافة البيانات الأولية (الأكواد، الأقسام، إعدادات الزيارة)
 
-## ⚠️ ملاحظات مهمة
+إذا رأيت ✅ في النهاية، فكل شيء جاهز.
 
-1. **Render Free Tier**:
-   - الخدمة "تنام" بعد 15 دقيقة من عدم النشاط
-   - أول طلب بعد النوم يستغرق ~30 ثانية (cold start)
-   - 750 ساعة شهرياً (تكفي لتطبيق واحد يعمل 24/7)
-   - للاستخدام الإنتاجي الحقيقي، انتقل إلى خطة مدفوعة ($7/شهر)
+#### 🚀 افتح النظام:
 
-2. **قاعدة البيانات الخارجية**:
-   - تأكد أن مزود الـ MySQL يسمح بالاتصالات من خارج شبكته
-   - Aiven و db4free يسمحان بذلك افتراضياً
-   - بعض المزودين يتطلبون إضافة IP الخاص بـ Render إلى قائمة المسموح
+```
+https://hospital-call-system-xxxx.onrender.com/
+```
 
-3. **حجم ملفات الصوت**:
-   - ملفا `chime-general.mp4` و `chime-code.mp4` كبيران (~5 ميجا لكل منهما)
-   - سيتم رفعهما مع التطبيق ولا يحتاجان إعداداً خاصاً
-
-4. **النسخ الاحتياطي**:
-   - على Aiven Free، يمكن أخذ نسخة احتياطية يدوياً كل أسبوع
-   - على db4free، لا يوجد نسخ احتياطي تلقائي — خذ نسخة بنفسك عبر phpMyAdmin
+- اضغط **Launch System** — ستنتقل مباشرة للوحة التحكم
+- جرّب Code Blue → ستسمع "Code Blue in Emergency Room"
+- جرّب **Visiting Hours** في السايدبر
 
 ---
 
-## 📞 استكشاف الأخطاء
+## 🔧 المتغيرات الكاملة (مرجع سريع)
 
-### المشكلة: `Database offline` أو `Database not found`
-- تأكد أن `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` مضبوطة في Environment على Render
-- افتح `https://your-app.onrender.com/db-check.php` لرؤية تفاصيل الخطأ
-- على بعض المزودين (مثل db4free)، يجب إنشاء الـ database يدوياً أولاً
+كل القيم المطلوبة (من بيانات Aiven التي أعطيتني):
 
-### المشكلة: الـ chime (نغمة الصوت) لا تعمل
-- تحقق أن ملفات `assets/audio/chime-*.mp4` موجودة في الصورة
-- تحقق أن المتصفح يسمح بتشغيل الصوت (autoplay policy)
-- انقر على أي مكان في الصفحة لتفعيل AudioContext
+| المتغير | القيمة |
+|---------|--------|
+| `DB_HOST` | `hospital-call-system-nermenaalameri-1446.a.aivencloud.com` |
+| `DB_PORT` | `23366` |
+| `DB_USER` | `avnadmin` |
+| `DB_PASS` | (كلمة مرور Aiven — `AVNS_...` التي أعطاك إياها Aiven) |
+| `DB_NAME` | `defaultdb` |
+| `DB_SSL`  | `1` |
 
-### المشكلة: النظام بطيء جداً
-- هذا متوقع على Render Free بعد فترة عدم نشاط (cold start)
-- للسرعة، انتقل إلى خطة مدفوعة ($7/شهر) أو استخدم Railway
-
----
-
-## ✅ قائمة التحقق قبل النشر
-
-- [ ] رفع الكود إلى GitHub
-- [ ] إنشاء حساب على Render
-- [ ] إنشاء قاعدة بيانات MySQL على Aiven (أو db4free)
-- [ ] تعبئة متغيرات البيئة في Render (DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME)
-- [ ] اكتمال البناء بدون أخطاء
-- [ ] زيارة `/db-check.php` للتأكد من نجاح الاتصال بالـ DB
-- [ ] زيارة الصفحة الرئيسية والتأكد من عمل النظام
+> شهادة SSL (`ca.pem`) مُضمّنة في `api/ca.pem` ولا تحتاج لإضافتها يدوياً.
 
 ---
 
-## 🌐 روابط مفيدة
+## ⚠️ استكشاف الأخطاء
 
-- **Render Dashboard**: https://dashboard.render.com
-- **Aiven Console**: https://console.aiven.io
-- **db4free Signup**: https://www.db4free.net/signup.php
-- **Railway**: https://railway.app
-- **InfinityFree**: https://app.infinityfree.com
+### المشكلة: "Database offline" بعد النشر
 
-بعد النشر، شارك رابط موقعك مع زملائك في المستشفى!
+1. افتح `/db-check.php` لرؤية التفاصيل
+2. تأكد أن جميع متغيرات البيئة الست مُدخلة في Render → Environment
+3. تأكد أن `DB_SSL=1` (مطلوب لـ Aiven)
+4. انتظر دقيقة بعد التعديل ثم أعد فتح الصفحة
+
+### المشكلة: لم يجد قاعدة البيانات `defaultdb`
+
+- على Aiven، الـ database الافتراضي اسمه `defaultdb`
+- لا تحاول إنشاء database جديد — Aiven Free لا يسمح بـ CREATE DATABASE
+- إذا أعطاك خطأ، اضبط `DB_NAME=defaultdb`
+
+### المشكلة: Cold Start (التطبيق نائم)
+
+- Render Free tier ينام بعد 15 دقيقة بدون نشاط
+- أول طلب بعد النوم يستغرق ~30 ثانية
+- لتفادي هذا، ارفع لخطة Starter ($7/شهر)
+
+### المشكلة: صوت الأكواد لا يعمل
+
+- اضغط على أي مكان في الصفحة أولاً (سياسة autoplay في المتصفح)
+- الصفحة تستخدم Web Audio API وتحتاج تفاعل المستخدم أولاً
+- على Chrome: انقر على أيقونة الصوت في شريط العنوان واسمح بالصوت
+
+### المشكلة: شهادة الـ SSL غير صحيحة
+
+- تأكد أن ملف `api/ca.pem` موجود في المستودع (موجود بالفعل)
+- إذا أردت التحقق، افتح:
+  ```
+  https://github.com/monawwerAlameri/hospital-call-system/blob/main/api/ca.pem
+  ```
+
+---
+
+## ✅ قائمة تحقق نهائية
+
+- [ ] مستودع GitHub public (مفعّل ✅)
+- [ ] Aiven MySQL service running على Aiven
+- [ ] كود محدّث في GitHub مع SSL support (مرفوع ✅)
+- [ ] Render Web Service تم إنشاؤه
+- [ ] DB_PASS مُدخل في Environment Variables
+- [ ] `/db-check.php` يُظهر ✅
+- [ ] الصفحة الرئيسية تعمل بدون أخطاء
+
+---
+
+## 🆘 إذا واجهت مشاكل
+
+أرسل لي:
+1. رابط Render الخاص بك
+2. محتوى صفحة `/db-check.php`
+3. أي رسائل خطأ من Render Logs
+
+وسأساعدك فوراً.
+
+---
+
+## 📦 البدائل إذا فشل Render
+
+### الخيار البديل 1: Railway.app
+1. اذهب إلى https://railway.app
+2. سجّل بحساب GitHub
+3. **New Project → Deploy from GitHub repo → اختر `monawwerAlameri/hospital-call-system`**
+4. اضغط **Variables** وأضف نفس المتغيرات الستة
+5. Railway سيكتشف `Dockerfile` تلقائياً
+6. بعد النشر، أضف `/db-check.php` للتحقق
+
+### الخيار البديل 2: Koyeb
+1. اذهب إلى https://koyeb.com
+2. سجّل بحساب GitHub
+3. **Create Service → GitHub → اختر المستودع**
+4. اضبط متغيرات البيئة نفسها
+5. النشر سيتم تلقائياً
+
+### الخيار البديل 3: Self-hosting على VPS
+1. استأجر VPS مجاني (مثلاً Oracle Cloud Free Tier)
+2. انسخ المستودع: `git clone https://github.com/monawwerAlameri/hospital-call-system`
+3. شغّل: `docker-compose up -d`
+4. افتح المنفذ 8080
+
+---
+
+## 🎉 جاهز!
+
+الآن لديك نظام نداءات المستشفى يعمل على الإنترنت بدون تكلفة. شارك رابط Render مع زملائك في المستشفى.
