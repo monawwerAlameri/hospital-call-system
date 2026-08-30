@@ -6,25 +6,54 @@
 //  Reads DB credentials from environment variables (for cloud
 //  deployments like Render / Railway / Heroku / shared hosting)
 //  and falls back to local dev defaults when env vars are absent.
+//  ----------------------------------------------------------------
+//  Aiven MySQL requires SSL — set DB_SSL=1 to enable.
+//  The CA certificate lives at api/ca.pem (bundled in repo).
+//  On Render, env vars take precedence over .env file.
 // ============================================================
+
+// Try to load .env file if it exists (for local dev). On Render,
+// env vars are already set in the dashboard.
+$_ENV_FILE = __DIR__ . '/../.env';
+if (is_file($_ENV_FILE) && function_exists('parse_ini_file')) {
+    $envVars = @parse_ini_file($_ENV_FILE);
+    if (is_array($envVars)) {
+        foreach ($envVars as $k => $v) {
+            if (getenv($k) === false) putenv("$k=$v");
+            if (!isset($_ENV[$k])) $_ENV[$k] = $v;
+        }
+    }
+}
 
 define('DB_HOST', getenv('DB_HOST') ?: '127.0.0.1');
 define('DB_USER', getenv('DB_USER') ?: 'root');
-define('DB_PASS', getenv('DB_PASS') ?: 'root');
+define('DB_PASS', getenv('DB_PASS') ?: getenv('DB_PASSWORD') ?: 'root');
 define('DB_NAME', getenv('DB_NAME') ?: 'hospital_call_system');
 define('DB_PORT', (int)(getenv('DB_PORT') ?: 3306));
+define('DB_SSL', (getenv('DB_SSL') === '1' || getenv('DB_SSL') === 'true'));
+define('DB_CA_CERT', __DIR__ . '/ca.pem');
 
 function getDB() {
     mysqli_report(MYSQLI_REPORT_OFF);
-    $conn = @new mysqli(DB_HOST, DB_USER, DB_PASS, '', DB_PORT);
+
+    // Aiven and other managed MySQL providers require SSL.
+    // When DB_SSL=1, use ssl_set + real_connect with the bundled CA.
+    $conn = @new mysqli();
+    if (DB_SSL && is_file(DB_CA_CERT)) {
+        $conn->ssl_set(null, null, DB_CA_CERT, null, null);
+        @$conn->real_connect(DB_HOST, DB_USER, DB_PASS, '', DB_PORT, null, MYSQLI_CLIENT_SSL_DONT_VERIFY_SERVER_CERT);
+    } else {
+        @$conn->real_connect(DB_HOST, DB_USER, DB_PASS, '', DB_PORT);
+    }
+
     if ($conn->connect_error) {
         header('Content-Type: application/json; charset=utf-8');
         die(json_encode(['success' => false, 'error' => 'Database offline: ' . $conn->connect_error]));
     }
 
-    // Try to create database; some free hosts (e.g. db4free) don't allow CREATE DATABASE,
+    // Try to create database; some free hosts (e.g. db4free, Aiven) don't allow CREATE DATABASE,
     // in which case the database must already exist on the server.
-    @$conn->query("CREATE DATABASE IF NOT EXISTS " . DB_NAME . " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+    @$conn->query("CREATE DATABASE IF NOT EXISTS `" . DB_NAME . "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
     if (!$conn->select_db(DB_NAME)) {
         header('Content-Type: application/json; charset=utf-8');
         die(json_encode(['success' => false, 'error' => 'Database "' . DB_NAME . '" not found. Please create it in your hosting panel first.']));
