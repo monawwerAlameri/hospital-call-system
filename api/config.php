@@ -37,18 +37,48 @@ function getDB() {
     mysqli_report(MYSQLI_REPORT_OFF);
 
     // Aiven and other managed MySQL providers require SSL.
-    // When DB_SSL=1, use ssl_set + real_connect with the bundled CA.
+    // We try SSL first; if it fails, we fall back to a plain connection
+    // (some shared hosts don't support SSL).
     $conn = @new mysqli();
+    $connected = false;
+    $lastError = '';
+
     if (DB_SSL && is_file(DB_CA_CERT)) {
-        $conn->ssl_set(null, null, DB_CA_CERT, null, null);
-        @$conn->real_connect(DB_HOST, DB_USER, DB_PASS, '', DB_PORT, null, MYSQLI_CLIENT_SSL_DONT_VERIFY_SERVER_CERT);
-    } else {
-        @$conn->real_connect(DB_HOST, DB_USER, DB_PASS, '', DB_PORT);
+        // Method 1: SSL with CA verification (most secure, works on Aiven)
+        try {
+            $conn = @new mysqli();
+            $conn->ssl_set(null, null, DB_CA_CERT, null, null);
+            @$conn->real_connect(DB_HOST, DB_USER, DB_PASS, '', DB_PORT, null, MYSQLI_CLIENT_SSL_DONT_VERIFY_SERVER_CERT);
+            if (!$conn->connect_error) {
+                $connected = true;
+            } else {
+                $lastError = 'SSL-with-CA: ' . $conn->connect_error;
+            }
+        } catch (\Throwable $e) {
+            $lastError = 'SSL-with-CA exception: ' . $e->getMessage();
+        }
     }
 
-    if ($conn->connect_error) {
-        header('Content-Type: application/json; charset=utf-8');
-        die(json_encode(['success' => false, 'error' => 'Database offline: ' . $conn->connect_error]));
+    if (!$connected) {
+        // Method 2: Plain TCP (no SSL) — last resort for hosts without SSL
+        $conn = @new mysqli();
+        @$conn->real_connect(DB_HOST, DB_USER, DB_PASS, '', DB_PORT);
+        if ($conn->connect_error) {
+            $lastError .= ' | Plain: ' . $conn->connect_error;
+            header('Content-Type: application/json; charset=utf-8');
+            die(json_encode([
+                'success' => false,
+                'error' => 'Database offline: ' . $lastError,
+                'debug' => [
+                    'host' => DB_HOST,
+                    'port' => DB_PORT,
+                    'user' => DB_USER,
+                    'ssl_enabled' => DB_SSL,
+                    'ca_cert_exists' => is_file(DB_CA_CERT),
+                    'ca_cert_path' => DB_CA_CERT
+                ]
+            ]));
+        }
     }
 
     // Try to create database; some free hosts (e.g. db4free, Aiven) don't allow CREATE DATABASE,

@@ -19,6 +19,9 @@ const Audio = (() => {
     // Preloaded audio buffers
     let generalChimeBuffer = null;
     let codeChimeBuffer = null;
+    // v5.1.1: Raw ArrayBuffers fetched on page load (no AudioContext needed)
+    let generalChimeRaw = null;
+    let codeChimeRaw = null;
     let buffersLoading = false;
     let buffersLoaded = false;
 
@@ -41,58 +44,98 @@ const Audio = (() => {
 
     function getCtx() {
         if (!audioCtx) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                console.warn('[Audio] Cannot create AudioContext yet:', e.message);
+                return null;
+            }
         }
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (audioCtx && audioCtx.state === 'suspended') {
+            // Resume() must be called from a user gesture; we try anyway
+            // and silently ignore if the browser refuses.
+            audioCtx.resume().catch(() => {});
+        }
         return audioCtx;
     }
 
     // ============================================================
     //  PRELOAD AUDIO BUFFERS
     //  Fetches and decodes both chime files on first use
+    //  v5.1.1: We no longer try to create AudioContext on page load
+    //  (Chrome blocks this). Instead we just fetch the raw audio
+    //  bytes; the AudioContext is only created on first user gesture.
     // ============================================================
     async function loadBuffers() {
         if (buffersLoaded || buffersLoading) return;
         buffersLoading = true;
 
-        const ctx = getCtx();
-
+        // v5.1.1: Fetch the audio files as ArrayBuffers WITHOUT needing
+        // an AudioContext. decodeAudioData() does require an AudioContext,
+        // so we defer decoding until first playback (see dingDong / emergencyAlert).
         try {
             const [resp1, resp2] = await Promise.all([
                 fetch(AUDIO_BASE + 'chime-general.mp4'),
                 fetch(AUDIO_BASE + 'chime-code.mp4')
             ]);
 
-            const [buf1, buf2] = await Promise.all([
-                resp1.arrayBuffer(),
-                resp2.arrayBuffer()
-            ]);
+            if (!resp1.ok || !resp2.ok) throw new Error('HTTP ' + resp1.status + '/' + resp2.status);
 
-            const [decoded1, decoded2] = await Promise.all([
-                ctx.decodeAudioData(buf1),
-                ctx.decodeAudioData(buf2)
-            ]);
-
-            generalChimeBuffer = decoded1;
-            codeChimeBuffer = decoded2;
-            buffersLoaded = true;
-            console.log('[Audio] Chime buffers loaded — general:',
-                generalChimeBuffer.duration.toFixed(1) + 's, code:',
-                codeChimeBuffer.duration.toFixed(1) + 's');
+            generalChimeRaw = await resp1.arrayBuffer();
+            codeChimeRaw = await resp2.arrayBuffer();
+            console.log('[Audio] Chime files fetched (raw): general=' +
+                generalChimeRaw.byteLength + 'B, code=' +
+                codeChimeRaw.byteLength + 'B');
         } catch (e) {
-            console.warn('[Audio] Could not load chime files, falling back to synthesized:', e);
+            console.warn('[Audio] Could not fetch chime files, will use synthesized fallback:', e.message);
+        } finally {
             buffersLoading = false;
         }
     }
 
-    // Start loading immediately
+    // v5.1.1: Decode raw buffers on first playback (requires AudioContext).
+    async function ensureDecoded() {
+        if (buffersLoaded) return true;
+        const ctx = getCtx();
+        if (!ctx) return false; // AudioContext not yet available
+        try {
+            if (generalChimeRaw && !generalChimeBuffer) {
+                generalChimeBuffer = await ctx.decodeAudioData(generalChimeRaw.slice(0));
+            }
+            if (codeChimeRaw && !codeChimeBuffer) {
+                codeChimeBuffer = await ctx.decodeAudioData(codeChimeRaw.slice(0));
+            }
+            if (generalChimeBuffer && codeChimeBuffer) {
+                buffersLoaded = true;
+                console.log('[Audio] Chime buffers decoded — general:',
+                    generalChimeBuffer.duration.toFixed(1) + 's, code:',
+                    codeChimeBuffer.duration.toFixed(1) + 's');
+                return true;
+            }
+        } catch (e) {
+            console.warn('[Audio] Could not decode chime buffers:', e.message);
+        }
+        return false;
+    }
+
+    // Start fetching raw audio bytes immediately (no AudioContext needed).
     if (document.readyState === 'complete') {
         loadBuffers();
     } else {
         window.addEventListener('load', loadBuffers);
     }
-    // Also load on first user interaction (required for AudioContext)
-    document.addEventListener('click', () => { loadBuffers(); }, { once: true });
+    // v5.1.1: Create the AudioContext on the FIRST user gesture.
+    // This is required by Chrome's autoplay policy.
+    function unlockAudio() {
+        const ctx = getCtx();
+        if (ctx && ctx.state === 'suspended') ctx.resume();
+        // Also try to decode any pending buffers now that we have a context.
+        ensureDecoded();
+    }
+    // Listen for the first user gesture (any of these events counts).
+    ['click', 'touchstart', 'keydown', 'pointerdown'].forEach(evt => {
+        document.addEventListener(evt, unlockAudio, { once: true, passive: true });
+    });
 
     // ============================================================
     //  PLAY AUDIO BUFFER (only first N seconds)
@@ -225,7 +268,10 @@ const Audio = (() => {
     //  Plays beginning tone of chime-general.mp4
     //  For: employee calls, department calls, general announcements
     // ============================================================
-    function dingDong(onComplete) {
+    async function dingDong(onComplete) {
+        // v5.1.1: Ensure AudioContext is created (from user gesture) and
+        // raw buffers are decoded before playback.
+        await ensureDecoded();
         if (generalChimeBuffer) {
             playBuffer(generalChimeBuffer, GENERAL_CHIME_DURATION, onComplete);
         } else {
@@ -245,7 +291,10 @@ const Audio = (() => {
     //  Plays beginning tone of chime-code.mp4
     //  For: Code Blue, Code Red, Code Pink, Code Black, etc.
     // ============================================================
-    function emergencyAlert(onComplete) {
+    async function emergencyAlert(onComplete) {
+        // v5.1.1: Ensure AudioContext is created (from user gesture) and
+        // raw buffers are decoded before playback.
+        await ensureDecoded();
         if (codeChimeBuffer) {
             playBuffer(codeChimeBuffer, CODE_CHIME_DURATION, onComplete);
         } else {
