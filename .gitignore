@@ -1,0 +1,27 @@
+# Sensitive files
+.env
+.env.local
+.env.production
+
+# Skills dev folder (not part of the project)
+skills/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Backup files
+*.bak
+*.tmp
+*~
+
+# Build outputs
+*.zip
+*.tar.gz
+download/
+upload/
