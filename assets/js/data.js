@@ -71,8 +71,8 @@ const CODES = [
     glow: 'rgba(21,73,192,0.5)',
     ic: 'fa-heart-pulse',
     priority: 'critical',
-    msg_en: 'Code Blue… Code Blue… {loc}. Medical emergency team, respond immediately.',
-    msg_ar: 'كود أزرق… كود أزرق… {loc_ar}. فريق الطوارئ الطبية، الاستجابة فورًا.',
+    msg_en: 'Code Blue in {loc}. Medical emergency team, respond immediately.',
+    msg_ar: 'كود أزرق في {loc_ar}. فريق الطوارئ الطبية، الاستجابة فورًا.',
   },
   {
     id: 'CODE_RED',
@@ -83,8 +83,8 @@ const CODES = [
     glow: 'rgba(185,28,28,0.5)',
     ic: 'fa-fire',
     priority: 'critical',
-    msg_en: 'Code Red… Code Red… {loc}. All staff, follow fire emergency protocol immediately.',
-    msg_ar: 'كود أحمر… كود أحمر… {loc_ar}. جميع الكوادر، اتبعوا بروتوكول الحريق فورًا.',
+    msg_en: 'Code Red in {loc}. All staff, follow fire emergency protocol immediately.',
+    msg_ar: 'كود أحمر في {loc_ar}. جميع الكوادر، اتبعوا بروتوكول الحريق فورًا.',
   },
   {
     id: 'CODE_WHITE',
@@ -95,8 +95,8 @@ const CODES = [
     glow: 'rgba(100,116,139,0.4)',
     ic: 'fa-shield-halved',
     priority: 'high',
-    msg_en: 'Code White… Code White… {loc}. Security team, respond immediately.',
-    msg_ar: 'كود أبيض… كود أبيض… {loc_ar}. فريق الأمن، الاستجابة فورًا.',
+    msg_en: 'Code White in {loc}. Security team, respond immediately.',
+    msg_ar: 'كود أبيض في {loc_ar}. فريق الأمن، الاستجابة فورًا.',
   },
   {
     id: 'CODE_PINK',
@@ -107,8 +107,8 @@ const CODES = [
     glow: 'rgba(190,24,93,0.5)',
     ic: 'fa-baby',
     priority: 'critical',
-    msg_en: 'Code Pink… Code Pink. Infant abduction alert. All exits are secured. Security, respond immediately.',
-    msg_ar: 'كود وردي… تنبيه اختطاف رضيع. جميع المخارج مغلقة. فريق الأمن، الاستجابة فورًا.',
+    msg_en: 'Code Pink in {loc}. Infant abduction alert. All exits are secured. Security, respond immediately.',
+    msg_ar: 'كود وردي في {loc_ar}. تنبيه اختطاف رضيع. جميع المخارج مغلقة. فريق الأمن، الاستجابة فورًا.',
   },
   {
     id: 'CODE_BLACK',
@@ -119,8 +119,8 @@ const CODES = [
     glow: 'rgba(24,24,27,0.6)',
     ic: 'fa-skull-crossbones',
     priority: 'critical',
-    msg_en: 'Code Black… Code Black. Bomb threat received. Follow evacuation protocol immediately.',
-    msg_ar: 'كود أسود… تم استلام تهديد بقنبلة. اتبعوا بروتوكول الإخلاء فورًا.',
+    msg_en: 'Code Black in {loc}. Bomb threat received. Follow evacuation protocol immediately.',
+    msg_ar: 'كود أسود في {loc_ar}. تم استلام تهديد بقنبلة. اتبعوا بروتوكول الإخلاء فورًا.',
   },
   {
     id: 'CODE_YELLOW',
@@ -131,8 +131,8 @@ const CODES = [
     glow: 'rgba(217,119,6,0.5)',
     ic: 'fa-magnifying-glass',
     priority: 'high',
-    msg_en: 'Code Yellow… Code Yellow. Missing patient alert at {loc}. All staff, be on alert.',
-    msg_ar: 'كود أصفر… تنبيه مريض مفقود في {loc_ar}. جميع الكوادر، كونوا في حالة تأهب.',
+    msg_en: 'Code Yellow in {loc}. Missing patient alert. All staff, be on alert.',
+    msg_ar: 'كود أصفر في {loc_ar}. تنبيه مريض مفقود. جميع الكوادر، كونوا في حالة تأهب.',
   },
   {
     id: 'RRT_TEAM',
@@ -143,8 +143,8 @@ const CODES = [
     glow: 'rgba(124,58,237,0.5)',
     ic: 'fa-truck-medical',
     priority: 'high',
-    msg_en: 'Rapid Response Team required at {loc}. R R T team, respond immediately.',
-    msg_ar: 'مطلوب فريق الاستجابة السريعة في {loc_ar}. فريق الاستجابة السريعة، الاستجابة فورًا.',
+    msg_en: 'Rapid Response Team in {loc}. R R T team, respond immediately.',
+    msg_ar: 'فريق الاستجابة السريعة في {loc_ar}. الاستجابة فورًا.',
   },
   {
     id: 'CODE_PURPLE',
@@ -155,8 +155,8 @@ const CODES = [
     glow: 'rgba(79,70,229,0.5)',
     ic: 'fa-user-lock',
     priority: 'critical',
-    msg_en: 'Code Purple… Code Purple. Hostage situation reported. Security and authorities notified.',
-    msg_ar: 'كود بنفسجي… تم الإبلاغ عن حالة احتجاز رهينة. تم إخطار الأمن والسلطات.',
+    msg_en: 'Code Purple in {loc}. Hostage situation reported. Security and authorities notified.',
+    msg_ar: 'كود بنفسجي في {loc_ar}. تم الإبلاغ عن حالة احتجاز رهينة. تم إخطار الأمن والسلطات.',
   },
 ];
 
@@ -176,7 +176,7 @@ const CODE_ACTIONS = {
 const TMPLS = [
   'Dr. [Name], [Specialty] on call, please contact the [Department], extension [EXT].',
   'Attention [Staff Role] on duty, please report to [Location] immediately, extension [EXT].',
-  'Attention please: A visitor is requested at [Department]. Kindly proceed to the information desk.',
+  'A visitor is requested at [Department]. Kindly proceed to the information desk.',
   'General announcement for all staff: [Your message here].',
   'Dr. [Name], your presence is required at [Department] urgently.',
   'Pharmacy: Please deliver medication urgently to [Department], extension [EXT].',

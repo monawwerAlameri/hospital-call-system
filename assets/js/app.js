@@ -18,7 +18,13 @@ function testCustomTTS() {
 }
 
 
-let CU = null;
+// ===================================================================
+//  v3.1 — No-user/no-password mode:
+//  The system no longer requires authentication. CU is auto-set to a
+//  default operator on every page load. The users table is kept in the
+//  DB for audit/log purposes only (operator_name is recorded on calls).
+// ===================================================================
+let CU = { id: 0, name: 'Operator', email: '', role: 'operator', gender: 'male', dept: 'General' };
 let LOC = { c: 'ER', n: 'Emergency Room', ar: 'قسم الطوارئ' };
 let LOGS = [];
 let SBC = false;
@@ -32,23 +38,38 @@ let DB_SPECS = [];
 let DB_ROLES = [];
 let DB_DOCTORS = [];
 let DB_SCHEDULED = [];
+let DB_VISIT_HOURS = null;     // v3.1 — single active visit-hours config
 
-// ===== DEMO USERS (fallback if no DB) =====
+// ===== DEMO USERS — DISABLED in v3.1 (no-login mode) =====
+// The system no longer requires authentication. CU is set automatically
+// to a default operator. This constant is kept for backward compatibility
+// only — doLogin() no longer reads it.
 const DEMO_USERS = [
-    { id: 1, name: 'System Administrator', email: 'admin@hospital.sa', password: 'Admin@1234', role: 'admin', gender: 'male', dept: 'IT Department' },
-    { id: 2, name: 'Dr. Sara Al-Rashidi', email: 'sara@hospital.sa', password: 'Admin@1234', role: 'operator', gender: 'female', dept: 'Emergency Room' },
-    { id: 3, name: 'Mohammed Al-Qahtani', email: 'mohammed@hospital.sa', password: 'Admin@1234', role: 'operator', gender: 'male', dept: 'Intensive Care Unit' },
+    { id: 0, name: 'Operator', email: '', password: '', role: 'operator', gender: 'male', dept: 'General' },
 ];
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
     tick(); setInterval(tick, 1000);
+    // v3.1: Auto-login (no credentials needed). Set CU and persist it so
+    // downstream code that reads CU keeps working unchanged.
+    try {
+        const stored = sessionStorage.getItem('hcs_user');
+        if (stored) CU = JSON.parse(stored);
+        else { CU = { id: 0, name: 'Operator', email: '', role: 'operator', gender: 'male', dept: 'General' }; saveSession(); }
+    } catch (e) {
+        CU = { id: 0, name: 'Operator', email: '', role: 'operator', gender: 'male', dept: 'General' };
+    }
+    updateUIForUser();
     loadAllData();
     loadSavedSession();
     initSettingsSliders();
     loadAudioSettings();
     checkScheduled();
     setInterval(checkScheduled, 60000);
+    // v3.1: Visit-hours auto-announcements — checked every 30s
+    loadVisitHours();
+    setInterval(checkVisitHours, 30000);
     if (document.getElementById('custHist')) loadCustomHistory();
 });
 
@@ -150,75 +171,43 @@ function showPage(p) {
     }
 }
 
+// ===================================================================
+//  v3.1 — doLogin() is now a no-op: the system is password-free.
+//  Any call to doLogin() (e.g. from the legacy login form) immediately
+//  redirects to the dashboard with a default operator session.
+// ===================================================================
 async function doLogin() {
-    const em = document.getElementById('lEmail')?.value.trim();
-    const pw = document.getElementById('lPass')?.value;
-    if (!em || !pw) { toast('Fill all fields', 'error', 'Login'); return; }
-
-    // Try API first
-    const r = await apiFetch('api/auth.php', {
-        method: 'POST', body: JSON.stringify({ action: 'login', email: em, password: pw })
-    });
-    let user = null;
-    if (r.success && r.user) {
-        user = r.user;
-    } else {
-        // Fallback demo
-        user = DEMO_USERS.find(u => u.email === em && u.password === pw);
-        if (user) user = { ...user, dept: user.dept };
-    }
-    if (!user) {
-        if (typeof Swal !== 'undefined') {
-            Swal.fire({ title: 'Login Failed', text: 'Invalid email or password. Please try again.', icon: 'error', confirmButtonColor: '#1F6F8B' });
-        } else { toast('Invalid credentials', 'error', 'Login Failed'); }
-        return;
-    }
-
-    CU = user;
-    const dLoc = LOCS.find(l => l.n === (user.dept || user.department));
-    if (dLoc) LOC = dLoc;
+    CU = { id: 0, name: 'Operator', email: '', role: 'operator', gender: 'male', dept: 'General' };
     saveSession();
     sessionStorage.setItem('hcs_tab', 'home');
     sessionStorage.setItem('hcs_welcome', '1');
     showPage('dashboard');
 }
 
+// v3.1 — doRegister() is also a no-op redirect. Registration is not
+// required because the system has no users. We just go to the dashboard.
 async function doRegister() {
-    const n = document.getElementById('rName')?.value.trim();
-    const em = document.getElementById('rEmail')?.value.trim();
-    const pw = document.getElementById('rPass')?.value;
-    const pwc = document.getElementById('rPassConfirm')?.value;
-    const gn = document.getElementById('rGender')?.value;
-    const dp = document.getElementById('rDept')?.value;
-    const ph = document.getElementById('rPhone')?.value?.trim() || '';
-    if (!n || !em || !pw) { toast('Fill required fields', 'error', 'Register'); return; }
-    if (pw.length < 6) { toast('Password min 6 chars', 'error', 'Register'); return; }
-    if (pwc && pw !== pwc) { toast('Passwords do not match', 'error', 'Register'); return; }
-
-    const r = await apiFetch('api/auth.php', {
-        method: 'POST', body: JSON.stringify({ action: 'register', name: n, email: em, password: pw, gender: gn, department: dp, phone: ph })
-    });
-    if (r.success) {
-        if (typeof Swal !== 'undefined') {
-            Swal.fire({ title: 'Account Created!', text: 'Your account has been created. Please sign in.', icon: 'success', confirmButtonColor: '#1F6F8B', confirmButtonText: 'Sign In' }).then(() => { window.location.href = 'login.php'; });
-        } else { toast('Account created! Sign in.', 'success', 'Registered'); setTimeout(() => { window.location.href = 'login.php'; }, 1200); }
-    } else { toast(r.error || 'Registration failed', 'error', 'Error'); }
+    CU = { id: 0, name: 'Operator', email: '', role: 'operator', gender: 'male', dept: 'General' };
+    saveSession();
+    sessionStorage.setItem('hcs_tab', 'home');
+    sessionStorage.setItem('hcs_welcome', '1');
+    showPage('dashboard');
 }
 
+// v3.1 — doLogout() now just navigates back to landing page; it does
+// not destroy the (non-existent) session.
 function doLogout() {
-    CU = null;
-    clearSession();
     if (typeof Audio !== 'undefined' && Audio.cancelSpeech) Audio.cancelSpeech();
     window.location.href = 'index.php';
 }
 
 function updateUIForUser() {
-    if (!CU) return;
-    const ini = CU.name.charAt(0).toUpperCase();
+    if (!CU) CU = { id: 0, name: 'Operator', email: '', role: 'operator', gender: 'male', dept: 'General' };
+    const ini = (CU.name || 'O').charAt(0).toUpperCase();
     ['sbAv', 'tbAv', 'setAv'].forEach(id => { const e = document.getElementById(id); if (e) e.textContent = ini; });
-    setElText('sbName', CU.name.split(' ').slice(0, 2).join(' '));
+    setElText('sbName', (CU.name || 'Operator').split(' ').slice(0, 2).join(' '));
     setElText('sbRole', (CU.role || 'operator').toUpperCase());
-    setElText('setNm', CU.name); setElText('setEm', CU.email);
+    setElText('setNm', CU.name || 'Operator'); setElText('setEm', CU.email || '—');
     setElText('setRl', CU.role || 'operator'); setElText('setDept', CU.dept || CU.department || '—');
 }
 
@@ -238,23 +227,26 @@ function loadSavedSession() {
         const l = sessionStorage.getItem('hcs_loc');
         const t = sessionStorage.getItem('hcs_tab') || 'home';
         const onDashboard = document.getElementById('tab-home') !== null;
+        // v3.1: Always have a default operator; never redirect to login.
         if (u) {
             CU = JSON.parse(u);
-            updateUIForUser();
-            if (onDashboard) {
-                showTab(t);
-                const welcomed = sessionStorage.getItem('hcs_welcome');
-                if (welcomed) {
-                    sessionStorage.removeItem('hcs_welcome');
-                    setTimeout(() => toast(`Welcome, ${CU.name.split(' ')[0]}!`, 'success', 'Signed In'), 600);
-                }
-            } else {
-                window.location.href = 'dashboard.php';
-                return;
+        } else {
+            CU = { id: 0, name: 'Operator', email: '', role: 'operator', gender: 'male', dept: 'General' };
+            saveSession();
+        }
+        updateUIForUser();
+        if (onDashboard) {
+            showTab(t);
+            const welcomed = sessionStorage.getItem('hcs_welcome');
+            if (welcomed) {
+                sessionStorage.removeItem('hcs_welcome');
+                setTimeout(() => toast(`Welcome, ${(CU.name||'Operator').split(' ')[0]}!`, 'success', 'Signed In'), 600);
             }
         }
         if (l) { LOC = JSON.parse(l); updateLocLabels(); }
-    } catch (e) { }
+    } catch (e) {
+        CU = { id: 0, name: 'Operator', email: '', role: 'operator', gender: 'male', dept: 'General' };
+    }
 }
 function clearSession() {
     sessionStorage.removeItem('hcs_user');
@@ -305,6 +297,7 @@ function showTab(t) {
     if (t === 'handover') { loadDepartments().then(function() { populateDeptDropdowns(); }); loadHandoverLog(); }
     if (t === 'tvboard') { loadTVMessages(); }
     if (t === 'quiethours') { loadQuietHoursConfig(); }
+    if (t === 'visit-hours') { loadVisitHours(); }
     if (t === 'themes') { if (typeof renderThemeCards === 'function') renderThemeCards(); }
     if (window.innerWidth <= 900) closeMobileSB();
 }
@@ -399,7 +392,13 @@ function sv(panel, gender) {
     if (fid) document.getElementById(fid)?.classList.toggle('voice-active', gender === 'female');
 }
 
-// ===== EMERGENCY CODE =====
+// ===================================================================
+//  v3.1 — Emergency Code announcement format
+//  OLD: "Code Blue activated"  /  "Code Blue… Code Blue… {loc}. Action."
+//  NEW: "Code Blue in ER"      /  "كود أزرق في الطوارئ"
+//  The location/section is now REVERSED to come AFTER the code name,
+//  with the word "in" (English) / "في" (Arabic) — never "activated".
+// ===================================================================
 function activateCode(id) {
     const c = DB_CODES.find(x => x.code_key === id) || (() => {
         const fc = CODES.find(x => x.id === id);
@@ -407,8 +406,11 @@ function activateCode(id) {
     })();
     if (!c) return;
 
-    const msgEn = (c.msg_en || `${c.name}... ${c.name}... ${LOC.n}. All staff respond immediately.`).replace('{loc}', LOC.n);
-    const msgAr = (c.msg_ar || '').replace('{loc_ar}', LOC.ar || LOC.n);
+    // Build announcement text in the NEW format: "Code <Name> in <Location>"
+    const locEn = LOC.n || 'the hospital';
+    const locAr = LOC.ar || LOC.n || 'المستشفى';
+    const msgEn = (c.msg_en || `Code ${c.name} in ${locEn}`).replace('{loc}', locEn).replace('{loc_ar}', locEn);
+    const msgAr = (c.msg_ar || `كود ${c.name_ar || c.name} في ${locAr}`).replace('{loc_ar}', locAr).replace('{loc}', locAr);
 
     const displayName = LANG === 'ar' && c.name_ar ? c.name_ar : c.name;
     showAnnouncement({ title: displayName, type: t('ann.emergency_code'), en: msgEn, ar: msgAr, bg: c.color, cl: c.text_color, icon: c.icon, priority: c.priority });
@@ -1159,16 +1161,21 @@ function val(id) { return document.getElementById(id)?.value || ''; }
 // ===== QUICK SOS WALL =====
 var sosLogEntries = [];
 
+// ===================================================================
+//  v3.1 — Quick SOS Wall
+//  Same format change: "Code <Name> in <Location>" — no "activated",
+//  no duplicate "Code X… Code X…" prefix, no "Attention please".
+// ===================================================================
 function sendQuickSOS(type) {
     var colorMap = {
-        blue:   { name: 'Code Blue',   name_ar: 'كود أزرق',   color: '#1549c0', icon: 'fa-heart-pulse', priority: 'critical', msg: 'Code Blue... Code Blue... {loc}. Cardiac arrest. Resuscitation team respond immediately.', msg_ar: 'كود أزرق... كود أزرق... {loc_ar}. توقف قلبي. فريق الإنعاش يستجيب فوراً.' },
-        red:    { name: 'Code Red',    name_ar: 'كود أحمر',   color: '#dc2626', icon: 'fa-fire',        priority: 'critical', msg: 'Code Red... Code Red... {loc}. Fire emergency. Evacuate and call security.', msg_ar: 'كود أحمر... كود أحمر... {loc_ar}. حالة حريق طارئة. إخلاء المنطقة واستدعاء الأمن.' },
-        pink:   { name: 'Code Pink',   name_ar: 'كود وردي',   color: '#be185d', icon: 'fa-baby',        priority: 'critical', msg: 'Code Pink... Code Pink... {loc}. Infant alert. Security lock down exits.', msg_ar: 'كود وردي... كود وردي... {loc_ar}. تنبيه اختطاف طفل. الأمن يغلق المخارج فوراً.' },
-        black:  { name: 'Code Black',  name_ar: 'كود أسود',   color: '#1e293b', icon: 'fa-shield-halved', priority: 'critical', msg: 'Code Black... Code Black... {loc}. Bomb threat. Evacuate area immediately.', msg_ar: 'كود أسود... كود أسود... {loc_ar}. تهديد بوجود قنبلة. إخلاء المنطقة فوراً.' },
-        orange: { name: 'Code Orange', name_ar: 'كود برتقالي', color: '#d97706', icon: 'fa-person-falling-burst', priority: 'high', msg: 'Code Orange... Code Orange... {loc}. Mass casualty. All available medical staff respond.', msg_ar: 'كود برتقالي... كود برتقالي... {loc_ar}. حادث جماعي. جميع الكوادر الطبية المتاحة تستجيب.' },
-        yellow: { name: 'Code Yellow', name_ar: 'كود أصفر',   color: '#b45309', icon: 'fa-person-walking-arrow-loop-left', priority: 'high', msg: 'Code Yellow... Code Yellow... {loc}. Missing patient. All staff be on alert.', msg_ar: 'كود أصفر... كود أصفر... {loc_ar}. مريض مفقود. جميع الموظفين في حالة تأهب.' },
-        silver: { name: 'Code Silver', name_ar: 'كود فضي',    color: '#475569', icon: 'fa-gun',         priority: 'critical', msg: 'Code Silver... Code Silver... {loc}. Armed person. Security respond immediately.', msg_ar: 'كود فضي... كود فضي... {loc_ar}. شخص مسلح. الأمن يستجيب فوراً.' },
-        white:  { name: 'Code White',  name_ar: 'كود أبيض',   color: '#6b7280', icon: 'fa-snowflake',   priority: 'high',     msg: 'Code White... Code White... {loc}. Infrastructure emergency. Facilities respond.', msg_ar: 'كود أبيض... كود أبيض... {loc_ar}. حالة طوارئ في البنية التحتية. فريق الصيانة يستجيب.' }
+        blue:   { name: 'Code Blue',   name_ar: 'كود أزرق',   color: '#1549c0', icon: 'fa-heart-pulse', priority: 'critical', msg: 'Code Blue in {loc}. Cardiac arrest. Resuscitation team respond immediately.', msg_ar: 'كود أزرق في {loc_ar}. توقف قلبي. فريق الإنعاش يستجيب فوراً.' },
+        red:    { name: 'Code Red',    name_ar: 'كود أحمر',   color: '#dc2626', icon: 'fa-fire',        priority: 'critical', msg: 'Code Red in {loc}. Fire emergency. Evacuate and call security.', msg_ar: 'كود أحمر في {loc_ar}. حالة حريق طارئة. إخلاء المنطقة واستدعاء الأمن.' },
+        pink:   { name: 'Code Pink',   name_ar: 'كود وردي',   color: '#be185d', icon: 'fa-baby',        priority: 'critical', msg: 'Code Pink in {loc}. Infant alert. Security lock down exits.', msg_ar: 'كود وردي في {loc_ar}. تنبيه اختطاف طفل. الأمن يغلق المخارج فوراً.' },
+        black:  { name: 'Code Black',  name_ar: 'كود أسود',   color: '#1e293b', icon: 'fa-shield-halved', priority: 'critical', msg: 'Code Black in {loc}. Bomb threat. Evacuate area immediately.', msg_ar: 'كود أسود في {loc_ar}. تهديد بوجود قنبلة. إخلاء المنطقة فوراً.' },
+        orange: { name: 'Code Orange', name_ar: 'كود برتقالي', color: '#d97706', icon: 'fa-person-falling-burst', priority: 'high', msg: 'Code Orange in {loc}. Mass casualty. All available medical staff respond.', msg_ar: 'كود برتقالي في {loc_ar}. حادث جماعي. جميع الكوادر الطبية المتاحة تستجيب.' },
+        yellow: { name: 'Code Yellow', name_ar: 'كود أصفر',   color: '#b45309', icon: 'fa-person-walking-arrow-loop-left', priority: 'high', msg: 'Code Yellow in {loc}. Missing patient. All staff be on alert.', msg_ar: 'كود أصفر في {loc_ar}. مريض مفقود. جميع الموظفين في حالة تأهب.' },
+        silver: { name: 'Code Silver', name_ar: 'كود فضي',    color: '#475569', icon: 'fa-gun',         priority: 'critical', msg: 'Code Silver in {loc}. Armed person. Security respond immediately.', msg_ar: 'كود فضي في {loc_ar}. شخص مسلح. الأمن يستجيب فوراً.' },
+        white:  { name: 'Code White',  name_ar: 'كود أبيض',   color: '#6b7280', icon: 'fa-snowflake',   priority: 'high',     msg: 'Code White in {loc}. Infrastructure emergency. Facilities respond.', msg_ar: 'كود أبيض في {loc_ar}. حالة طوارئ في البنية التحتية. فريق الصيانة يستجيب.' }
     };
     var c = colorMap[type];
     if (!c) return;
@@ -2228,3 +2235,174 @@ document.addEventListener('DOMContentLoaded', function() {
     loadDepartments();
     setTimeout(loadActiveTimers, 2000);
 });
+
+// ===================================================================
+//  v3.1 — VISITING HOURS feature
+//  ===================================================================
+//  • Configuration stored in DB (visit_hours_config table)
+//  • Auto-announces three events every day:
+//      1. Visit START (e.g. 16:00) → Arabic "بدأت ساعات الزيارة"
+//      2. Visit END - 10 minutes (e.g. 19:50) → "تنتهي الزيارة خلال 10 دقائق"
+//      3. Visit END (e.g. 20:00) → "انتهت ساعات الزيارة"
+//  • All announcements are in Arabic (per client requirement) and
+//    also include an English fallback for bilingual display.
+//  • The check runs every 30 seconds; the "fire window" is 60s wide
+//    so a single fire per event is guaranteed even if the tab stays
+//    open all day. Fires are de-duplicated by day key.
+// ===================================================================
+
+// Track which events have already fired today (avoid duplicate announces)
+let visitHoursFiredToday = { date: '', start: false, endWarn: false, end: false };
+
+function _vhDateKey(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+}
+
+function _vhResetIfNewDay() {
+    const today = _vhDateKey(new Date());
+    if (visitHoursFiredToday.date !== today) {
+        visitHoursFiredToday = { date: today, start: false, endWarn: false, end: false };
+    }
+}
+
+function _vhParseTimeToTodayMinutes(hhmm) {
+    if (!hhmm || typeof hhmm !== 'string') return null;
+    const parts = hhmm.split(':');
+    if (parts.length < 2) return null;
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+}
+
+async function loadVisitHours() {
+    try {
+        const r = await apiFetch('api/visit_hours.php');
+        if (r && r.success && r.config) {
+            DB_VISIT_HOURS = r.config;
+            renderVisitHoursForm();
+        } else {
+            DB_VISIT_HOURS = null;
+        }
+    } catch (e) {
+        DB_VISIT_HOURS = null;
+    }
+}
+
+function renderVisitHoursForm() {
+    if (!DB_VISIT_HOURS) return;
+    const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
+    const chk = (id, v) => { const e = document.getElementById(id); if (e) e.checked = !!parseInt(v); };
+    set('vhStart', DB_VISIT_HOURS.start_time || '16:00');
+    set('vhEnd',   DB_VISIT_HOURS.end_time   || '20:00');
+    chk('vhEnabled', DB_VISIT_HOURS.is_enabled);
+    set('vhMsgStartAr', DB_VISIT_HOURS.start_msg_ar || 'بدأت ساعات الزيارة. يرجى من الزوار التوجه إلى الأقسام المخصصة.');
+    set('vhMsgEndAr',   DB_VISIT_HOURS.end_msg_ar   || 'انتهت ساعات الزيارة. يرجى من الزوار مغادرة المستشفى. شاكرين لكم تفهمكم.');
+    set('vhMsgWarnAr',  DB_VISIT_HOURS.warn_msg_ar  || 'تنتهي ساعات الزيارة خلال 10 دقائق. يرجى من الزوار الاستعداد للمغادرة.');
+    set('vhMsgStartEn', DB_VISIT_HOURS.start_msg_en || 'Visiting hours have begun. Visitors may proceed to the designated wards.');
+    set('vhMsgEndEn',   DB_VISIT_HOURS.end_msg_en   || 'Visiting hours have ended. Visitors are kindly requested to leave the hospital. Thank you.');
+    set('vhMsgWarnEn',  DB_VISIT_HOURS.warn_msg_en || 'Visiting hours will end in 10 minutes. Visitors are kindly requested to prepare to leave.');
+    const statusEl = document.getElementById('vhStatusBadge');
+    if (statusEl) {
+        const active = !!parseInt(DB_VISIT_HOURS.is_enabled);
+        const startStr = DB_VISIT_HOURS.start_time || '16:00';
+        const endStr   = DB_VISIT_HOURS.end_time   || '20:00';
+        statusEl.textContent = active
+            ? (LANG === 'ar' ? 'مفعّل — من ' + startStr + ' إلى ' + endStr : 'Active — ' + startStr + ' to ' + endStr)
+            : (LANG === 'ar' ? 'غير مفعّل' : 'Disabled');
+        statusEl.className = 'vh-status-badge ' + (active ? 'active' : 'inactive');
+    }
+}
+
+async function saveVisitHours() {
+    const data = {
+        is_enabled:  document.getElementById('vhEnabled')?.checked ? 1 : 0,
+        start_time:  val('vhStart') || '16:00',
+        end_time:    val('vhEnd')   || '20:00',
+        start_msg_ar: val('vhMsgStartAr'),
+        end_msg_ar:   val('vhMsgEndAr'),
+        warn_msg_ar:  val('vhMsgWarnAr'),
+        start_msg_en: val('vhMsgStartEn'),
+        end_msg_en:   val('vhMsgEndEn'),
+        warn_msg_en:  val('vhMsgWarnEn')
+    };
+    const r = await apiFetch('api/visit_hours.php', { method: 'POST', body: JSON.stringify(data) });
+    if (r && r.success) {
+        toast(LANG === 'ar' ? 'تم حفظ إعدادات الزيارة' : 'Visit hours saved', 'success', LANG === 'ar' ? 'ساعات الزيارة' : 'Visit Hours');
+        await loadVisitHours();
+        // Reset fired-state so new times take effect immediately if window is now
+        visitHoursFiredToday = { date: '', start: false, endWarn: false, end: false };
+        _vhResetIfNewDay();
+    } else {
+        toast(r?.error || (LANG === 'ar' ? 'فشل الحفظ' : 'Save failed'), 'error');
+    }
+}
+
+function previewVisitMsg(which) {
+    const ar = val('vhMsg' + which + 'Ar');
+    const en = val('vhMsg' + which + 'En');
+    if (!ar && !en) { toast(LANG === 'ar' ? 'أدخل نصاً أولاً' : 'Enter a message first', 'warning'); return; }
+    Audio.announce(en || '', 'female', 'custom', null, ar || '');
+    toast(LANG === 'ar' ? 'جارٍ التشغيل...' : 'Playing preview…', 'info');
+}
+
+function checkVisitHours() {
+    if (!DB_VISIT_HOURS) return;
+    if (!parseInt(DB_VISIT_HOURS.is_enabled)) return;
+
+    _vhResetIfNewDay();
+
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    const startMin = _vhParseTimeToTodayMinutes(DB_VISIT_HOURS.start_time);
+    const endMin   = _vhParseTimeToTodayMinutes(DB_VISIT_HOURS.end_time);
+    if (startMin === null || endMin === null) return;
+
+    // 1) Visit start announcement
+    if (!visitHoursFiredToday.start && nowMin === startMin) {
+        visitHoursFiredToday.start = true;
+        _vhFireAnnouncement('start');
+    }
+    // 2) Visit-end warning (10 minutes before end)
+    const warnMin = endMin - 10;
+    if (warnMin > startMin && !visitHoursFiredToday.endWarn && nowMin === warnMin) {
+        visitHoursFiredToday.endWarn = true;
+        _vhFireAnnouncement('warn');
+    }
+    // 3) Visit-end announcement
+    if (!visitHoursFiredToday.end && nowMin === endMin) {
+        visitHoursFiredToday.end = true;
+        _vhFireAnnouncement('end');
+    }
+}
+
+function _vhFireAnnouncement(which) {
+    const ar = DB_VISIT_HOURS[which + '_msg_ar'] || '';
+    const en = DB_VISIT_HOURS[which + '_msg_en'] || '';
+    if (!ar && !en) return;
+
+    const titles = {
+        start: LANG === 'ar' ? 'بدء الزيارة' : 'Visit Start',
+        warn:  LANG === 'ar' ? 'تنبيه قبل الانتهاء' : 'Visit Ending Soon',
+        end:   LANG === 'ar' ? 'انتهاء الزيارة' : 'Visit End'
+    };
+    const icons  = { start: 'fa-door-open', warn: 'fa-hourglass-half', end: 'fa-door-closed' };
+    const colors = { start: '#059669', warn: '#d97706', end: '#dc2626' };
+
+    showAnnouncement({
+        title: titles[which],
+        type: LANG === 'ar' ? 'إعلان زيارة' : 'Visit Announcement',
+        en: en, ar: ar,
+        bg: colors[which], cl: '#ffffff',
+        icon: icons[which], priority: 'normal'
+    });
+    // Use the general (non-emergency) chime + speech
+    Audio.announce(en, 'female', 'custom', null, ar);
+
+    toast(titles[which], 'info', LANG === 'ar' ? 'ساعات الزيارة' : 'Visiting Hours');
+    logToBackend('scheduled', titles[which], '', '', '', '', (ar || en), 'female');
+}

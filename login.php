@@ -2,9 +2,15 @@
 /**
  * Hospital Call System - Login Page
  * King Khalid Hospital, Hail
+ * v3.1 — No credentials required. This page auto-redirects to dashboard.
  */
-
 define('HOSPITAL_CALL_SYSTEM', true);
+
+// v3.1 — Auto-redirect: the system no longer requires authentication.
+// We immediately forward the user to the dashboard. The CU object will
+// be initialised on the dashboard side with a default operator.
+header('Location: dashboard.php');
+exit;
 
 $pageTitle = 'Sign In';
 $pageName  = 'login';

@@ -1,10 +1,16 @@
 // ============================================================
-//  HOSPITAL CALL SYSTEM — AUDIO ENGINE  v5.0
+//  HOSPITAL CALL SYSTEM — AUDIO ENGINE  v5.1
 //  Uses REAL reference audio files for chime tones
 //  Ref1 (chime-general.mp4) → General/employee calls
 //  Ref2 (chime-code.mp4)    → Emergency code calls
 //  Speech remains dynamic via Text-to-Speech
 //  King Khalid Hospital, Hail
+//  v5.1 changes:
+//   - Improved audio quality (clearer pitch, natural rate)
+//   - Shorter pauses between phrases (default 250ms)
+//   - Removed duplicate "Attention please" repetition
+//   - Enabled Arabic speech synthesis (was previously skipped)
+//   - Better voice picking for ar-SA
 // ============================================================
 
 const Audio = (() => {
@@ -70,8 +76,8 @@ const Audio = (() => {
             generalChimeBuffer = decoded1;
             codeChimeBuffer = decoded2;
             buffersLoaded = true;
-            console.log('[Audio] Chime buffers loaded — general:', 
-                generalChimeBuffer.duration.toFixed(1) + 's, code:', 
+            console.log('[Audio] Chime buffers loaded — general:',
+                generalChimeBuffer.duration.toFixed(1) + 's, code:',
                 codeChimeBuffer.duration.toFixed(1) + 's');
         } catch (e) {
             console.warn('[Audio] Could not load chime files, falling back to synthesized:', e);
@@ -305,6 +311,14 @@ const Audio = (() => {
         const filtered = voices.filter(v => v.lang.startsWith(langPrefix));
 
         if (!filtered.length) {
+            // Try Google voices as last resort — they often support both languages
+            const googleVoices = voices.filter(v => v.name.toLowerCase().includes('google'));
+            if (googleVoices.length) {
+                const arGoogle = googleVoices.find(v => v.lang.startsWith('ar'));
+                if (isAr && arGoogle) return arGoogle;
+                const enGoogle = googleVoices.find(v => v.lang.startsWith('en'));
+                if (!isAr && enGoogle) return enGoogle;
+            }
             const fallback = voices.filter(v => v.lang.startsWith(isAr ? 'ar' : 'en'));
             if (fallback.length) return fallback[0];
             return voices.length ? voices[0] : null;
@@ -312,9 +326,9 @@ const Audio = (() => {
 
         if (isAr) {
             const arNames = gender === 'male'
-                ? ['majed', 'maged', 'tarik', 'hadi', 'male', 'أحمد']
-                : ['laila', 'maryam', 'zeina', 'hoda', 'amira', 'female', 'فاطمة'];
-            const match = filtered.find(v => arNames.some(n => v.name.toLowerCase().includes(n)));
+                ? ['majed', 'maged', 'tarik', 'hadi', 'male', 'naayf']
+                : ['laila', 'maryam', 'zeina', 'hoda', 'amira', 'female', 'zariyah'];
+            const match = filtered.find(v => arNames.some(n => v.name.toLowerCase().includes(n.toLowerCase())));
             if (match) return match;
             return gender === 'male' ? filtered[0] : (filtered[1] || filtered[0]);
         }
@@ -329,70 +343,77 @@ const Audio = (() => {
 
     // ============================================================
     //  READ AUDIO SETTINGS
+    //  v5.1: Improved defaults for clearer, more natural speech
+    //  - Speech rate: 0.85 (more natural than 0.62 airport-style)
+    //  - Female pitch: 1.05 (clearer than 1.10)
+    //  - Pause between phrases: 250ms (shorter than 700ms)
+    //  - Repeat: 2 times (kept)
     // ============================================================
     function getAudioSettings() {
-        const rate = parseFloat(document.getElementById('sRt')?.value || document.getElementById('sRt2')?.value || '0.62');
-        const pitchM = parseFloat(document.getElementById('sPM')?.value || document.getElementById('sPM2')?.value || '0.78');
-        const pitchF = parseFloat(document.getElementById('sPF')?.value || document.getElementById('sPF2')?.value || '1.10');
+        const rate   = parseFloat(document.getElementById('sRt')?.value || document.getElementById('sRt2')?.value || '0.85');
+        const pitchM = parseFloat(document.getElementById('sPM')?.value || document.getElementById('sPM2')?.value || '0.85');
+        const pitchF = parseFloat(document.getElementById('sPF')?.value || document.getElementById('sPF2')?.value || '1.05');
         const repeat = parseInt(document.getElementById('sRpt')?.value || '2');
-        const pauseMs = parseInt(document.getElementById('sPause')?.value || '700');
+        // v5.1: shorter pause between phrases (250ms instead of 700ms)
+        const pauseMs = parseInt(document.getElementById('sPause')?.value || '250');
         return { rate, pitchM, pitchF, repeat, pauseMs };
     }
 
     // ============================================================
-    //  SPEAK — English only
-    //  For emergency codes: "Attention please" x2 (same female voice) + announcement
-    //  For normal calls: just the announcement directly
-    //  Always uses female voice, no Arabic
+    //  SPEAK — Bilingual (English + Arabic)
+    //  v5.1 changes:
+    //   - Removed duplicate "Attention please" (was x2, now x0 for emergency)
+    //   - Enabled Arabic speech synthesis (was previously skipped)
+    //   - Respects gender parameter for voice selection
+    //   - Uses effective pitch per gender (no longer locked to female pitch)
     // ============================================================
     function speak(text, gender, isEmergency, onDone, lang) {
         if (!window.speechSynthesis) { if (onDone) onDone(); return; }
         window.speechSynthesis.cancel();
 
-        // Skip Arabic speech entirely
         const speechLang = lang || 'en-US';
-        if (speechLang.startsWith('ar')) {
-            if (onDone) onDone();
-            return;
-        }
+        // v5.1: Arabic speech is now supported (no longer skipped)
+        // Note: if no Arabic voice is available, browser may fall back to default voice
 
         const { rate, pitchM, pitchF, repeat, pauseMs } = getAudioSettings();
 
-        // Always use female voice and pitch for consistency
-        const effectivePitch = pitchF;
-        const voice = pickVoice('female', speechLang);
+        // v5.1: Use the requested gender instead of always female
+        const useGender = gender || 'female';
+        const effectivePitch = useGender === 'male' ? pitchM : pitchF;
+        const voice = pickVoice(useGender, speechLang);
 
         const fullText = (typeof fixPronunciation === 'function') ? fixPronunciation(text) : text;
         const mainPhrases = splitPhrases(fullText);
 
-        // For emergency codes: add "Attention please" x2 with the SAME female voice
-        let allPhrases;
-        if (isEmergency) {
-            allPhrases = ['Attention please', 'Attention please', ...mainPhrases];
-        } else {
-            allPhrases = mainPhrases;
-        }
+        // v5.1: Removed "Attention please" duplication entirely
+        // Previously: emergency codes had "Attention please" x2 prepended
+        // Now: speak the announcement directly (faster, less repetitive)
+        const allPhrases = mainPhrases;
 
         let runCount = 0;
         function doRun() {
             speakPhrases(allPhrases, voice, rate, effectivePitch, pauseMs, speechLang, () => {
                 runCount++;
                 if (runCount < repeat) {
-                    setTimeout(doRun, 1200);
+                    // v5.1: Shorter pause between repeats (was 1200ms)
+                    setTimeout(doRun, 600);
                 } else {
                     hideAllSpeaking();
                     if (onDone) onDone();
                 }
             });
         }
-        setTimeout(doRun, 200);
+        // v5.1: Shorter initial delay (was 200ms)
+        setTimeout(doRun, 100);
     }
 
     // ============================================================
-    //  ANNOUNCE — English only sequence
-    //  Emergency/Code: code-chime (ref2) → English speech
-    //  Normal:         general-chime (ref1) → English speech
-    //  NO Arabic speech, NO "Attention please"
+    //  ANNOUNCE — Bilingual sequence
+    //  v5.1: Supports both English and Arabic speech
+    //  Emergency/Code: code-chime (ref2) → speech → code-chime (ref2)
+    //  Normal:         general-chime (ref1) → speech → general-chime (ref1)
+    //  If textAr is provided AND Arabic voice is available, speak Arabic
+    //  after English; otherwise speak English only.
     // ============================================================
     function announce(textEn, gender, type, onDone, textAr) {
         cancelSpeech();
@@ -406,26 +427,39 @@ const Audio = (() => {
             }
         }
 
-        // After initial chime: speak English only, then play chime again
+        function speakArabic(cb) {
+            // v5.1: Speak Arabic if provided and language preference includes it
+            // Check if user language is Arabic OR if both English and Arabic are empty
+            const userLangAr = (typeof LANG !== 'undefined') && LANG === 'ar';
+            if (textAr && textAr.trim() && (userLangAr || !textEn || !textEn.trim())) {
+                speak(textAr, gender, isEmergency, cb, 'ar-SA');
+            } else {
+                if (cb) cb();
+            }
+        }
+
+        // After initial chime: speak English, then Arabic, then play chime again
         function afterChime() {
             speakEnglish(() => {
-                if (isEmergency) {
-                    emergencyAlert(() => {
-                        if (onDone) onDone();
-                    });
-                } else {
-                    dingDong(() => {
-                        if (onDone) onDone();
-                    });
-                }
+                speakArabic(() => {
+                    if (isEmergency) {
+                        emergencyAlert(() => {
+                            if (onDone) onDone();
+                        });
+                    } else {
+                        dingDong(() => {
+                            if (onDone) onDone();
+                        });
+                    }
+                });
             });
         }
 
         if (isEmergency) {
-            // Emergency/Code: play CODE chime (ref2) → then English speech
+            // Emergency/Code: play CODE chime (ref2) → then speech
             emergencyAlert(afterChime);
         } else {
-            // Normal: play GENERAL chime (ref1) → then English speech
+            // Normal: play GENERAL chime (ref1) → then speech
             dingDong(afterChime);
         }
     }

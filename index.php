@@ -314,8 +314,7 @@ html[dir="rtl"] .chatbot-badge{right:auto;left:4px;}
       </ul>
       <div class="nav-actions">
         <button class="btn-nav-lang" id="lpLangBtn" onclick="lpToggleLang()" type="button" data-i18n="lp.lang_btn">العربية</button>
-        <a href="register.php" class="btn-nav-login nav-link" data-i18n="lp.nav_register">Register</a>
-        <a href="login.php" class="btn-nav-signup nav-link" data-i18n="lp.nav_signin">Sign In</a>
+        <a href="dashboard.php" class="btn-nav-signup nav-link" data-i18n="lp.nav_signin">Launch System</a>
       </div>
     </div>
   </div>
@@ -343,8 +342,8 @@ html[dir="rtl"] .chatbot-badge{right:auto;left:4px;}
           <span class="sub-ar" data-i18n="lp.hero_desc_ar">إعلانات صوتية فورية لجميع الأقسام بأسلوب نداءات المطارات</span>
         </p>
         <div class="hero-cta-group">
-          <a href="login.php" class="btn-hero-primary"><i class="fas fa-rocket"></i> <span data-i18n="lp.hero_launch">Launch System</span></a>
-          <a href="register.php" class="btn-hero-secondary"><i class="fas fa-user-plus"></i> <span data-i18n="lp.hero_create">Create Account</span></a>
+          <a href="dashboard.php" class="btn-hero-primary"><i class="fas fa-rocket"></i> <span data-i18n="lp.hero_launch">Launch System</span></a>
+          <a href="#features" class="btn-hero-secondary"><i class="fas fa-info-circle"></i> <span data-i18n="lp.nav_features">Features</span></a>
         </div>
         <div class="hero-stats">
           <div class="hero-stat"><div class="num">13+</div><div class="lbl" data-i18n="lp.stat_depts">Departments</div></div>
@@ -462,8 +461,8 @@ html[dir="rtl"] .chatbot-badge{right:auto;left:4px;}
       </div>
       <div class="col-6 col-sm-4 col-lg-2">
         <div class="footer-h" data-i18n="lp.footer_account">Account</div>
-        <a href="login.php" class="footer-link" data-i18n="lp.footer_signin">Sign In</a>
-        <a href="register.php" class="footer-link" data-i18n="lp.footer_register">Register</a>
+        <a href="dashboard.php" class="footer-link" data-i18n="lp.footer_signin">Launch System</a>
+        <a href="dashboard.php" class="footer-link" data-i18n="lp.footer_register">Open Dashboard</a>
       </div>
       <div class="col-6 col-sm-4 col-lg-2">
         <div class="footer-h" data-i18n="lp.footer_support">Support</div>
@@ -508,11 +507,11 @@ html[dir="rtl"] .chatbot-badge{right:auto;left:4px;}
       <div class="bnav-icon"><i class="fas fa-bolt"></i></div>
       <span class="bnav-label" data-i18n="lp.bnav_codes">Codes</span>
     </a>
-    <a href="register.php" class="bnav-item">
-      <div class="bnav-icon"><i class="fas fa-user-plus"></i></div>
-      <span class="bnav-label" data-i18n="lp.bnav_register">Register</span>
+    <a href="dashboard.php" class="bnav-item">
+      <div class="bnav-icon"><i class="fas fa-rocket"></i></div>
+      <span class="bnav-label" data-i18n="lp.bnav_signin">Launch</span>
     </a>
-    <a href="login.php" class="bnav-fab" aria-label="Launch System">
+    <a href="dashboard.php" class="bnav-fab" aria-label="Launch System">
       <i class="fas fa-rocket"></i>
     </a>
     <span class="bnav-fab-label">Launch</span>

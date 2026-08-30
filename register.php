@@ -2,9 +2,13 @@
 /**
  * Hospital Call System - Register Page
  * King Khalid Hospital, Hail
+ * v3.1 — No registration required. Auto-redirects to dashboard.
  */
-
 define('HOSPITAL_CALL_SYSTEM', true);
+
+// v3.1 — Auto-redirect: the system no longer requires user accounts.
+header('Location: dashboard.php');
+exit;
 
 $pageTitle = 'Register';
 $pageName = 'register';

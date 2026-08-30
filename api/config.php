@@ -230,6 +230,20 @@ function getDB() {
             expires_at DATETIME,
             created_by INT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )",
+        // v3.1 — Visit Hours configuration (single-row table)
+        "CREATE TABLE IF NOT EXISTS visit_hours_config (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            is_enabled TINYINT DEFAULT 1,
+            start_time VARCHAR(10) DEFAULT '16:00',
+            end_time VARCHAR(10) DEFAULT '20:00',
+            start_msg_ar TEXT,
+            end_msg_ar TEXT,
+            warn_msg_ar TEXT,
+            start_msg_en TEXT,
+            end_msg_en TEXT,
+            warn_msg_en TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )"
     ];
     
@@ -305,17 +319,71 @@ function getDB() {
             ('Dietitian', 'أخصائي تغذية', 'DIT', 'medical', 'any')");
     }
 
-    // Seed emergency codes
+    // Seed emergency codes (v3.1 format: "Code <Name> in {loc}" — no "activated")
     $ecRes = $conn->query("SELECT COUNT(*) as c FROM emergency_codes");
     if ($ecRes && $ecRes->fetch_assoc()['c'] == 0) {
-        $conn->query("INSERT INTO emergency_codes (code_key, name, name_ar, description, color, text_color, icon, priority, msg_en, msg_ar, is_builtin, sort_order) VALUES
-            ('CODE_BLUE', 'Code Blue', 'كود أزرق', 'Cardiac/Respiratory Arrest', '#2563eb', '#ffffff', 'fa-heartbeat', 'critical', 'Code Blue activated', 'تم تفعيل الكود الأزرق', 1, 1),
-            ('CODE_RED', 'Code Red', 'كود أحمر', 'Fire Emergency', '#dc2626', '#ffffff', 'fa-fire', 'critical', 'Code Red activated', 'تم تفعيل الكود الأحمر', 1, 2),
-            ('CODE_BLACK', 'Code Black', 'كود أسود', 'Bomb Threat', '#1e1b4b', '#ffffff', 'fa-skull-crossbones', 'critical', 'Code Black activated', 'تم تفعيل الكود الأسود', 1, 3),
-            ('CODE_PINK', 'Code Pink', 'كود وردي', 'Infant/Child Abduction', '#ec4899', '#ffffff', 'fa-baby', 'critical', 'Code Pink activated', 'تم تفعيل الكود الوردي', 1, 4),
-            ('CODE_WHITE', 'Code White', 'كود أبيض', 'Violent/Aggressive Patient', '#f8fafc', '#1e293b', 'fa-hand-fist', 'high', 'Code White activated', 'تم تفعيل الكود الأبيض', 1, 5),
-            ('CODE_YELLOW', 'Code Yellow', 'كود أصفر', 'Missing Patient', '#eab308', '#1e293b', 'fa-person-walking', 'high', 'Code Yellow activated', 'تم تفعيل الكود الأصفر', 1, 6),
-            ('CODE_RRT', 'Rapid Response', 'فريق الاستجابة السريعة', 'Rapid Response Team', '#7c3aed', '#ffffff', 'fa-bolt', 'high', 'Rapid Response Team activated', 'تم تفعيل فريق الاستجابة السريعة', 1, 7)");
+        $conn->query("INSERT INTO emergency_codes (code_key, name, name_ar, description, color, text_color, icon, priority, msg_en, msg_ar, action_note, is_builtin, sort_order) VALUES
+            ('CODE_BLUE', 'Code Blue', 'كود أزرق', 'Cardiac/Respiratory Arrest', '#2563eb', '#ffffff', 'fa-heartbeat', 'critical', 'Code Blue in {loc}. Medical emergency team, respond immediately.', 'كود أزرق في {loc_ar}. فريق الطوارئ الطبية، الاستجابة فورًا.', 'Crash team respond immediately, bring crash cart and defibrillator', 1, 1),
+            ('CODE_RED', 'Code Red', 'كود أحمر', 'Fire Emergency', '#dc2626', '#ffffff', 'fa-fire', 'critical', 'Code Red in {loc}. Fire emergency. Evacuate area and call security.', 'كود أحمر في {loc_ar}. حالة حريق طارئة. إخلاء المنطقة واستدعاء الأمن.', 'Evacuate area, call fire department 998, use extinguishers', 1, 2),
+            ('CODE_BLACK', 'Code Black', 'كود أسود', 'Bomb Threat', '#1e1b4b', '#ffffff', 'fa-skull-crossbones', 'critical', 'Code Black in {loc}. Bomb threat. Evacuate area immediately.', 'كود أسود في {loc_ar}. تهديد بوجود قنبلة. إخلاء المنطقة فورًا.', 'Do not touch, evacuate area, notify police 999 immediately', 1, 3),
+            ('CODE_PINK', 'Code Pink', 'كود وردي', 'Infant/Child Abduction', '#ec4899', '#ffffff', 'fa-baby', 'critical', 'Code Pink in {loc}. Infant alert. Security lock down exits.', 'كود وردي في {loc_ar}. تنبيه اختطاف طفل. الأمن يغلق المخارج فورًا.', 'Lock all exits, check all persons leaving, call security', 1, 4),
+            ('CODE_WHITE', 'Code White', 'كود أبيض', 'Violent/Aggressive Patient', '#f8fafc', '#1e293b', 'fa-hand-fist', 'high', 'Code White in {loc}. Security team, respond immediately.', 'كود أبيض في {loc_ar}. فريق الأمن، الاستجابة فورًا.', 'Security contain situation, do not approach alone', 1, 5),
+            ('CODE_YELLOW', 'Code Yellow', 'كود أصفر', 'Missing Patient', '#eab308', '#1e293b', 'fa-person-walking', 'high', 'Code Yellow in {loc}. Missing patient. All staff be on alert.', 'كود أصفر في {loc_ar}. مريض مفقود. جميع الكوادر في حالة تأهب.', 'Search all areas, check CCTV, notify all security', 1, 6),
+            ('CODE_RRT', 'Rapid Response', 'فريق الاستجابة السريعة', 'Rapid Response Team', '#7c3aed', '#ffffff', 'fa-bolt', 'high', 'Rapid Response Team in {loc}. R R T team, respond immediately.', 'فريق الاستجابة السريعة في {loc_ar}. الاستجابة فورًا.', 'RRT team respond with equipment including crash cart', 1, 7)");
+    } else {
+        // v3.1 — Migrate existing emergency_codes rows from old "activated" format to new "in {loc}" format
+        $ecRes2 = $conn->query("SELECT id, code_key, msg_en, msg_ar FROM emergency_codes");
+        if ($ecRes2) {
+            while ($row = $ecRes2->fetch_assoc()) {
+                $msgEn = $row['msg_en'];
+                $msgAr = $row['msg_ar'];
+                $needsUpdate = false;
+                $newEn = $msgEn;
+                $newAr = $msgAr;
+
+                // If msg_en contains "activated" or doesn't contain "in {loc}", update it
+                if (stripos($msgEn, 'activated') !== false || stripos($msgEn, 'in {loc}') === false) {
+                    $codeName = $row['code_key'];
+                    $parts = explode('_', $codeName);
+                    array_shift($parts);
+                    $friendly = count($parts) > 0 ? 'Code ' . implode(' ', array_map('ucfirst', array_map('strtolower', $parts))) : $codeName;
+                    if ($codeName === 'CODE_RRT') $friendly = 'Rapid Response Team';
+                    $newEn = $friendly . ' in {loc}. ' . ($friendly === 'Rapid Response Team' ? 'R R T team, respond immediately.' : 'All staff respond immediately.');
+                    $needsUpdate = true;
+                }
+                if (stripos($msgAr, 'تفعيل') !== false || stripos($msgAr, 'في {loc_ar}') === false) {
+                    $codeName = $row['code_key'];
+                    $parts = explode('_', $codeName);
+                    array_shift($parts);
+                    $friendlyAr = count($parts) > 0 ? 'كود ' . implode(' ', array_map('ucfirst', array_map('strtolower', $parts))) : $codeName;
+                    if ($codeName === 'CODE_RRT') $friendlyAr = 'فريق الاستجابة السريعة';
+                    $newAr = $friendlyAr . ' في {loc_ar}. الاستجابة فورًا.';
+                    $needsUpdate = true;
+                }
+
+                if ($needsUpdate) {
+                    $stmtUpd = $conn->prepare("UPDATE emergency_codes SET msg_en = ?, msg_ar = ? WHERE id = ?");
+                    $stmtUpd->bind_param('ssi', $newEn, $newAr, $row['id']);
+                    $stmtUpd->execute();
+                }
+            }
+        }
+    }
+
+    // v3.1 — Seed visit_hours_config with default Arabic announcement messages
+    $vhRes = $conn->query("SELECT COUNT(*) as c FROM visit_hours_config");
+    if ($vhRes && $vhRes->fetch_assoc()['c'] == 0) {
+        $conn->query("INSERT INTO visit_hours_config (is_enabled, start_time, end_time, start_msg_ar, end_msg_ar, warn_msg_ar, start_msg_en, end_msg_en, warn_msg_en) VALUES (
+            1,
+            '16:00',
+            '20:00',
+            'بدأت ساعات الزيارة. يرجى من الزوار التوجه إلى الأقسام المخصصة.',
+            'انتهت ساعات الزيارة. يرجى من الزوار مغادرة المستشفى. شاكرين لكم تفهمكم.',
+            'تنتهي ساعات الزيارة خلال 10 دقائق. يرجى من الزوار الاستعداد للمغادرة.',
+            'Visiting hours have begun. Visitors may proceed to the designated wards.',
+            'Visiting hours have ended. Visitors are kindly requested to leave the hospital. Thank you.',
+            'Visiting hours will end in 10 minutes. Visitors are kindly requested to prepare to leave.'
+        )");
     }
 
     // Seed departments

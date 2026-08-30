@@ -2,6 +2,7 @@
 /**
  * Hospital Call System - Dashboard
  * King Khalid Hospital, Hail
+ * v3.1 — No login required. Direct access.
  */
 defined('HOSPITAL_CALL_SYSTEM') or define('HOSPITAL_CALL_SYSTEM', true);
 $pageTitle = 'Dashboard';
@@ -9,11 +10,7 @@ $pageName = 'dashboard';
 $bodyClass = 'app-page';
 include_once 'includes/header.php';
 ?>
-<script>
-    if (!sessionStorage.getItem('hcs_user')) {
-        window.location.replace('login.php');
-    }
-</script>
+<!-- v3.1 — No session check; the system is open without credentials. -->
 
 <div class="tc" id="tc" aria-live="polite" aria-atomic="true"></div>
 
@@ -133,6 +130,10 @@ include_once 'includes/header.php';
             <a href="#" class="sb-nav-item" id="nav-quiethours" onclick="showTab('quiethours'); return false;">
                 <i class="fas fa-moon"></i><span data-i18n="nav.quiethours">Quiet Hours</span>
             </a>
+            <a href="#" class="sb-nav-item" id="nav-visit-hours" onclick="showTab('visit-hours'); return false;">
+                <i class="fas fa-door-open"></i><span data-i18n="nav.visit_hours">Visiting Hours</span>
+                <span class="sb-badge sb-badge-green" data-i18n="misc.new">NEW</span>
+            </a>
         </nav>
 
         <div class="sb-footer">
@@ -205,6 +206,7 @@ include_once 'includes/header.php';
             include 'pages/handover.php';
             include 'pages/quiethours.php';
             include 'pages/themes.php';
+            include 'pages/visit-hours.php';
             ?>
         </main>
     </div>
