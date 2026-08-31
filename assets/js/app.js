@@ -137,7 +137,7 @@ async function loadRoles() {
 
 async function loadDoctors() {
     const r = await apiFetch('api/doctors.php');
-    DB_DOCTORS = r.success ? (r.data || []) : [];
+    DB_DOCTORS = (r.success && r.data) ? r.data : [];
     renderDoctorCards();
 }
 
@@ -153,9 +153,15 @@ function tick() {
     const el = document.getElementById('clk');
     if (el) el.textContent = now.toLocaleTimeString('en-US', { hour12: false });
     const h = now.getHours();
-    const g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    // v3.1.3: Use localized greeting strings
+    const greetings = LANG === 'ar'
+        ? ['صباح الخير', 'مساء الخير', 'مساء الخير']
+        : ['Good morning', 'Good afternoon', 'Good evening'];
+    const g = h < 12 ? greetings[0] : h < 17 ? greetings[1] : greetings[2];
     const ge = document.getElementById('dgr');
-    if (ge && CU) ge.textContent = `${g}, ${CU.name.split(' ')[0]} — King Khalid Hospital`;
+    // v3.1.3: Ensure CU is always set with a default name to avoid "undefined"
+    const userName = (CU && CU.name) ? CU.name.split(' ')[0] : 'Operator';
+    if (ge) ge.textContent = `${g}, ${userName} — ${LANG === 'ar' ? 'مستشفى الملك خالد' : 'King Khalid Hospital'}`;
 }
 
 // ===== AUTH =====
@@ -646,15 +652,28 @@ function renderDoctorCards() {
     const el = document.getElementById('doctorCards'); if (!el) return;
     const flt = document.getElementById('staffTypeFilter')?.value || '';
     const src = document.getElementById('staffSearch')?.value?.toLowerCase() || '';
+
+    // v3.1.3: If DB is offline (DB_DOCTORS empty), use static seed data from data.js
     let list = DB_DOCTORS;
+    if (!list.length) {
+        // Static fallback — 5 sample doctors (matches DB seeds)
+        list = [
+            { id: 1, name: 'Dr. Ahmed Al-Ghamdi', name_ar: 'د. أحمد الغامدي', specialty_name: 'Cardiology', specialty_name_ar: 'أمراض القلب', level: 'Consultant', gender: 'male', staff_type: 'doctor', dept_name: 'Emergency Room', extension: '2675' },
+            { id: 2, name: 'Dr. Fatima Al-Zahrani', name_ar: 'د. فاطمة الزهراني', specialty_name: 'Neurology', specialty_name_ar: 'طب الأعصاب', level: 'Specialist', gender: 'female', staff_type: 'doctor', dept_name: 'Intensive Care', extension: '2834' },
+            { id: 3, name: 'Dr. Mohammed Al-Otaibi', name_ar: 'د. محمد العتيبي', specialty_name: 'Internal Medicine', specialty_name_ar: 'الطب الباطني', level: 'Consultant', gender: 'male', staff_type: 'doctor', dept_name: 'Emergency Room', extension: '2676' },
+            { id: 4, name: 'Sara Al-Qahtani', name_ar: 'سارة القحطاني', specialty_name: 'Pediatrics', specialty_name_ar: 'طب الأطفال', level: 'Specialist', gender: 'female', staff_type: 'nurse', dept_name: 'Intensive Care', extension: '2835' },
+            { id: 5, name: 'Khaled Al-Harbi', name_ar: 'خالد الحربي', specialty_name: 'Neurology', specialty_name_ar: 'طب الأعصاب', level: 'Resident', gender: 'male', staff_type: 'technician', dept_name: 'Surgery', extension: '2412' }
+        ];
+    }
     if (flt) list = list.filter(d => (d.staff_type || 'doctor') === flt);
-    if (src) list = list.filter(d => d.name.toLowerCase().includes(src) || (d.specialty_name || '').toLowerCase().includes(src) || (d.dept_name || '').toLowerCase().includes(src));
+    if (src) list = list.filter(d => (d.name||'').toLowerCase().includes(src) || (d.specialty_name||'').toLowerCase().includes(src) || (d.dept_name||'').toLowerCase().includes(src));
     if (!list.length) { el.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><i class="fas fa-users"></i><p>${t('staff.no_found')}</p></div>`; return; }
     const STC = getStaffTypeCfg();
     el.innerHTML = list.map(d => {
         const cfg = STC[d.staff_type || 'doctor'] || STC.doctor;
         const avatarGrad = d.gender === 'female' && d.staff_type !== 'doctor'
             ? '135deg,#c026d3,#e879f9' : cfg.grad;
+        const specLabel = (LANG === 'ar' && d.specialty_name_ar) ? d.specialty_name_ar : (d.specialty_name || d.staff_type || t('staff.staff'));
         return `
     <div class="doctor-card" id="dc-${d.id}">
       <div class="doctor-card-head">
@@ -662,15 +681,15 @@ function renderDoctorCards() {
           <i class="fas ${cfg.icon}"></i>
         </div>
         <div class="doctor-info">
-          <h4>${cfg.title ? cfg.title + ' ' : ''}${d.name}</h4>
-          <p>${d.specialty_name || d.staff_type || t('staff.staff')}</p>
+          <h4>${cfg.title ? cfg.title + ' ' : ''}${d.name || ''}</h4>
+          <p>${specLabel}</p>
           <span class="staff-type-chip ${d.staff_type || 'doctor'}">${cfg.label}</span>
         </div>
         <div class="doctor-actions">
           <button class="icon-btn blue" onclick="viewStaff(${d.id})" title="View details"><i class="fas fa-eye"></i></button>
           <button class="icon-btn green" onclick="callDoctorByName(${d.id})" title="Page"><i class="fas fa-phone"></i></button>
-          <button class="icon-btn purple" onclick="openEditStaff(${d.id})" title="Edit"><i class="fas fa-pen"></i></button>
-          <button class="icon-btn red" onclick="deleteDoctor(${d.id})" title="Delete"><i class="fas fa-trash"></i></button>
+          ${d.id ? `<button class="icon-btn purple" onclick="openEditStaff(${d.id})" title="Edit"><i class="fas fa-pen"></i></button>` : ''}
+          ${d.id ? `<button class="icon-btn red" onclick="deleteDoctor(${d.id})" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
         </div>
       </div>
       <div class="doctor-meta">
@@ -798,18 +817,31 @@ async function deleteDoctor(id) {
 function renderDeptCards() {
     const el = document.getElementById('deptCards'); if (!el) return;
     const search = (document.getElementById('deptSearch')?.value || '').toLowerCase();
+    // v3.1.3: If DB is offline, fallback to static LOCS array with full data
     let locs = DB_LOCS.length ? DB_LOCS : LOCS.map(l => ({ id: 0, name: l.n, name_ar: l.ar, code: l.c, category: 'medical', floor: '' }));
-    if (search) locs = locs.filter(l => l.name.toLowerCase().includes(search) || (l.code || '').toLowerCase().includes(search) || (l.name_ar || '').includes(search));
+    if (search) locs = locs.filter(l => (l.name||'').toLowerCase().includes(search) || (l.code||'').toLowerCase().includes(search) || (l.name_ar||'').includes(search));
     if (!locs.length) { el.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><i class="fas fa-building"></i><p>${t('dept.no_found')}</p></div>`; return; }
+
+    // v3.1.3: Translate category to user's language
+    const catLabel = (cat) => {
+        const labels = {
+            'medical': LANG === 'ar' ? 'طبي' : 'Medical',
+            'admin':   LANG === 'ar' ? 'إداري' : 'Admin',
+            'general': LANG === 'ar' ? 'عام' : 'General',
+            'support': LANG === 'ar' ? 'دعم' : 'Support'
+        };
+        return labels[cat] || labels['medical'];
+    };
+
     el.innerHTML = locs.map(l => `
     <div class="dept-card">
-      <div class="dept-card-code">${l.code}</div>
+      <div class="dept-card-code">${l.code || ''}</div>
       <div class="dept-card-info">
-        <h4>${l.name}</h4>
+        <h4>${l.name || '—'}</h4>
         ${l.name_ar ? `<p class="ar" style="font-size:.78rem;color:var(--text-muted)">${l.name_ar}</p>` : ''}
         <div class="dept-meta">
           ${l.floor ? `<span><i class="fas fa-layer-group"></i> ${l.floor}</span>` : ''}
-          <span class="dept-cat ${l.category}">${l.category || 'medical'}</span>
+          <span class="dept-cat ${l.category || 'medical'}">${catLabel(l.category || 'medical')}</span>
         </div>
       </div>
       <div class="dept-card-actions">
