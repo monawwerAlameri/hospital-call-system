@@ -1,14 +1,29 @@
 <?php
 // ============================================================
 //  API: Scheduled Announcements  — CRUD
+//  v3.1.2: Returns empty array (with success=true) when DB is offline
+//          so the UI doesn't crash trying to read undefined.
 //  /api/scheduled.php
 // ============================================================
 require_once __DIR__ . '/config.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
-$db     = getDB();
+
+// Try DB
+$db = null;
+$dbOk = false;
+try {
+    $db = @getDB();
+    if ($db) $dbOk = true;
+} catch (\Throwable $e) {
+    $dbOk = false;
+}
 
 if ($method === 'GET') {
+    if (!$dbOk) {
+        echo json_encode(['success' => true, 'data' => [], 'source' => 'fallback']);
+        exit;
+    }
     $sql = "SELECT sa.*, d.name AS doctor_name, l.name AS location_name
             FROM scheduled_announcements sa
             LEFT JOIN doctors d ON d.id = sa.target_doctor_id
@@ -17,12 +32,13 @@ if ($method === 'GET') {
             ORDER BY sa.scheduled_time ASC";
     $rs = $db->query($sql);
     $rows = [];
-    while ($r = $rs->fetch_assoc()) $rows[] = $r;
+    if ($rs) { while ($r = $rs->fetch_assoc()) $rows[] = $r; }
     echo json_encode(['success'=>true,'data'=>$rows]);
     $db->close(); exit;
 }
 
 if ($method === 'POST') {
+    if (!$dbOk) { echo json_encode(['success' => false, 'error' => 'Database offline — cannot save scheduled announcement']); exit; }
     $b = json_decode(file_get_contents('php://input'), true) ?? [];
     $stmt = $db->prepare("INSERT INTO scheduled_announcements
         (title,message_text,target_role,target_doctor_id,target_location_id,voice_gender,scheduled_time,repeat_type)
@@ -49,8 +65,11 @@ if ($method === 'POST') {
 }
 
 if ($method === 'DELETE') {
+    if (!$dbOk) { echo json_encode(['success' => false, 'error' => 'Database offline']); exit; }
     $id = (int)($_GET['id'] ?? 0);
     $db->query("UPDATE scheduled_announcements SET is_active=0 WHERE id=$id");
     echo json_encode(['success'=>true]);
     $db->close(); exit;
 }
+
+echo json_encode(['success' => false, 'error' => 'Method not allowed']);

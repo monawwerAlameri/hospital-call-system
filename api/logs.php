@@ -1,12 +1,26 @@
 <?php
 // ============================================================
 //  API: Call Logs — GET with optional filters / POST / DELETE
+//  v3.1.2: Returns empty array (success=true) when DB is offline.
 // ============================================================
 require_once __DIR__ . '/config.php';
 $method = $_SERVER['REQUEST_METHOD'];
-$db = getDB();
+
+// Try DB
+$db = null;
+$dbOk = false;
+try {
+    $db = @getDB();
+    if ($db) $dbOk = true;
+} catch (\Throwable $e) {
+    $dbOk = false;
+}
 
 if ($method === 'GET') {
+    if (!$dbOk) {
+        echo json_encode(['success' => true, 'data' => [], 'source' => 'fallback']);
+        exit;
+    }
     $limit  = (int)($_GET['limit'] ?? 100);
     $type   = isset($_GET['type']) ? $db->real_escape_string($_GET['type']) : '';
     $where  = $type ? "WHERE cl.call_type = '$type'" : '';
@@ -18,12 +32,17 @@ if ($method === 'GET') {
                LIMIT $limit";
     $rs   = $db->query($sql);
     $rows = [];
-    while ($r = $rs->fetch_assoc()) $rows[] = $r;
+    if ($rs) { while ($r = $rs->fetch_assoc()) $rows[] = $r; }
     echo json_encode(['success' => true, 'data' => $rows]);
     $db->close(); exit;
 }
 
 if ($method === 'POST') {
+    if (!$dbOk) {
+        // Silently accept the log without saving — UI shouldn't crash
+        echo json_encode(['success' => true, 'id' => 0, 'source' => 'fallback', 'note' => 'DB offline — log not persisted']);
+        exit;
+    }
     $b    = json_decode(file_get_contents('php://input'), true) ?? [];
     $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
     $stmt = $db->prepare(
@@ -57,6 +76,7 @@ if ($method === 'POST') {
 }
 
 if ($method === 'DELETE') {
+    if (!$dbOk) { echo json_encode(['success' => false, 'error' => 'Database offline']); exit; }
     $days = (int)($_GET['days'] ?? 30);
     $db->query("DELETE FROM call_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL $days DAY)");
     echo json_encode(['success' => true, 'message' => "Logs older than $days days deleted."]);
@@ -64,4 +84,3 @@ if ($method === 'DELETE') {
 }
 
 echo json_encode(['success' => false, 'error' => 'Method not supported']);
-$db->close();

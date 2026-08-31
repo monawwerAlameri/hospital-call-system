@@ -1,25 +1,50 @@
 <?php
 // ============================================================
-//  API: Visit Hours Configuration  — v3.1
+//  API: Visit Hours Configuration  — v3.1.2
 //  /api/visit_hours.php
-//  Single-row configuration table that drives automatic
-//  visit-start / visit-end-warn / visit-end announcements.
-//  Announcements are bilingual (Arabic + English fallback).
+//  Returns fallback config when DB is unavailable so the UI never breaks.
 // ============================================================
 require_once __DIR__ . '/config.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
-$db = getDB();
+
+// Default fallback config (used when DB is offline)
+$FALLBACK_CONFIG = [
+    'id' => 1,
+    'is_enabled' => 1,
+    'start_time' => '16:00',
+    'end_time'   => '20:00',
+    'start_msg_ar' => 'بدأت ساعات الزيارة. يرجى من الزوار التوجه إلى الأقسام المخصصة.',
+    'end_msg_ar'   => 'انتهت ساعات الزيارة. يرجى من الزوار مغادرة المستشفى. شاكرين لكم تفهمكم.',
+    'warn_msg_ar'  => 'تنتهي ساعات الزيارة خلال 10 دقائق. يرجى من الزوار الاستعداد للمغادرة.',
+    'start_msg_en' => 'Visiting hours have begun. Visitors may proceed to the designated wards.',
+    'end_msg_en'   => 'Visiting hours have ended. Visitors are kindly requested to leave the hospital. Thank you.',
+    'warn_msg_en'  => 'Visiting hours will end in 10 minutes. Visitors are kindly requested to prepare to leave.',
+];
+
+// Try DB
+$db = null;
+$dbOk = false;
+try {
+    $db = @getDB();
+    if ($db) $dbOk = true;
+} catch (\Throwable $e) {
+    $dbOk = false;
+}
 
 // ------------------------------------------------------------
 //  GET — return the single visit_hours_config row
 // ------------------------------------------------------------
 if ($method === 'GET') {
+    if (!$dbOk) {
+        echo json_encode(['success' => true, 'config' => $FALLBACK_CONFIG, 'source' => 'fallback']);
+        exit;
+    }
     $rs = $db->query("SELECT * FROM visit_hours_config ORDER BY id ASC LIMIT 1");
     $row = $rs ? $rs->fetch_assoc() : null;
     if (!$row) {
-        // Bootstrap with defaults if row is missing for some reason
-        $db->query("INSERT INTO visit_hours_config (is_enabled, start_time, end_time, start_msg_ar, end_msg_ar, warn_msg_ar, start_msg_en, end_msg_en, warn_msg_en) VALUES (
+        // Try to seed the defaults
+        @$db->query("INSERT INTO visit_hours_config (is_enabled, start_time, end_time, start_msg_ar, end_msg_ar, warn_msg_ar, start_msg_en, end_msg_en, warn_msg_en) VALUES (
             1, '16:00', '20:00',
             'بدأت ساعات الزيارة. يرجى من الزوار التوجه إلى الأقسام المخصصة.',
             'انتهت ساعات الزيارة. يرجى من الزوار مغادرة المستشفى. شاكرين لكم تفهمكم.',
@@ -31,6 +56,7 @@ if ($method === 'GET') {
         $rs = $db->query("SELECT * FROM visit_hours_config ORDER BY id ASC LIMIT 1");
         $row = $rs ? $rs->fetch_assoc() : null;
     }
+    if (!$row) $row = $FALLBACK_CONFIG;
     echo json_encode(['success' => true, 'config' => $row]);
     $db->close(); exit;
 }
@@ -39,6 +65,7 @@ if ($method === 'GET') {
 //  POST — upsert the single config row
 // ------------------------------------------------------------
 if ($method === 'POST') {
+    if (!$dbOk) { echo json_encode(['success' => false, 'error' => 'Database offline — cannot save visit hours config']); exit; }
     $b = json_decode(file_get_contents('php://input'), true) ?? [];
 
     $is_enabled = isset($b['is_enabled']) ? (int)!!$b['is_enabled'] : 1;
@@ -51,7 +78,6 @@ if ($method === 'POST') {
     $end_msg_en   = $b['end_msg_en']   ?? 'Visiting hours have ended. Visitors are kindly requested to leave the hospital. Thank you.';
     $warn_msg_en  = $b['warn_msg_en']  ?? 'Visiting hours will end in 10 minutes. Visitors are kindly requested to prepare to leave.';
 
-    // Check if config row exists
     $exists = $db->query("SELECT id FROM visit_hours_config LIMIT 1");
     if ($exists && $exists->num_rows > 0) {
         $stmt = $db->prepare("UPDATE visit_hours_config SET
@@ -84,4 +110,3 @@ if ($method === 'POST') {
 }
 
 echo json_encode(['success' => false, 'error' => 'Method not allowed']);
-$db->close();

@@ -86,12 +86,12 @@ async function apiFetch(url, opts = {}) {
     try {
         const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
         return await r.json();
-    } catch (e) { return { success: false, error: e.message }; }
+    } catch (e) { return { success: false, error: e.message, data: [] }; }
 }
 
 async function loadCodes() {
     const r = await apiFetch('api/codes.php');
-    if (r.success && r.data.length) {
+    if (r.success && r.data && r.data.length) {
         DB_CODES = r.data;
     } else {
         // Fallback to static CODES defined in data.js
@@ -108,13 +108,14 @@ async function loadCodes() {
 
 async function loadLocations() {
     const r = await apiFetch('api/locations.php');
-    if (r.success && r.data.length) {
+    if (r.success && r.data && r.data.length) {
         DB_LOCS = r.data;
-        // Merge Arabic into LOCS global
+        // Merge Arabic into LOCS global (defensive: skip rows with missing code)
         r.data.forEach(l => {
+            if (!l || !l.code) return;
             const ex = LOCS.find(x => x.c === l.code);
-            if (!ex) LOCS.push({ c: l.code, n: l.name, ar: l.name_ar || l.name });
-            else { ex.n = l.name; ex.ar = l.name_ar || l.name; ex.id = l.id; }
+            if (!ex) LOCS.push({ c: l.code, n: l.name || l.code, ar: l.name_ar || l.name || l.code });
+            else { ex.n = l.name || ex.n; ex.ar = l.name_ar || l.name || ex.ar; ex.id = l.id; }
         });
     } else {
         DB_LOCS = LOCS;
@@ -125,13 +126,13 @@ async function loadLocations() {
 
 async function loadSpecs() {
     const r = await apiFetch('api/specialties.php');
-    if (r.success && r.data) DB_SPECS = r.data;
+    if (r.success && r.data && r.data.length) DB_SPECS = r.data;
     else DB_SPECS = SPECS.map((s, i) => ({ id: i + 1, name: s.en, name_ar: s.ar }));
 }
 
 async function loadRoles() {
     const r = await apiFetch('api/roles.php');
-    if (r.success && r.data) DB_ROLES = r.data;
+    if (r.success && r.data && r.data.length) DB_ROLES = r.data;
     else DB_ROLES = ROLES.map((r2, i) => ({ id: i + 1, name: r2.en, name_ar: r2.ar, default_gender: r2.gender || 'any' }));
 }
 

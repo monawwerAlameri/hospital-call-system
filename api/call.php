@@ -1,7 +1,21 @@
 <?php
+// ============================================================
+//  API: Call — stats / recent / history
+//  v3.1.2: Returns empty data (success=true) when DB is offline.
+// ============================================================
 require_once 'config.php';
 header('Content-Type: application/json');
-$db = getDB();
+
+// Try DB
+$db = null;
+$dbOk = false;
+try {
+    $db = @getDB();
+    if ($db) $dbOk = true;
+} catch (\Throwable $e) {
+    $dbOk = false;
+}
+
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
@@ -9,6 +23,10 @@ switch ($method) {
     case 'GET':
         switch ($action) {
             case 'stats':
+                if (!$dbOk) {
+                    echo json_encode(['success' => true, 'stats' => ['total' => 0, 'emergency' => 0, 'doctor' => 0, 'staff' => 0, 'custom' => 0], 'by_hour' => [], 'top_locations' => [], 'top_codes' => [], 'source' => 'fallback']);
+                    exit;
+                }
                 $today = date('Y-m-d');
                 $total = $db->query("SELECT COUNT(*) as c FROM call_logs WHERE DATE(created_at)='$today'")->fetch_assoc()['c'] ?? 0;
                 $emergency = $db->query("SELECT COUNT(*) as c FROM call_logs WHERE call_type='emergency_code' AND DATE(created_at)='$today'")->fetch_assoc()['c'] ?? 0;
@@ -41,53 +59,54 @@ switch ($method) {
                     'top_locations' => $topLocations,
                     'top_codes' => $topCodes
                 ]);
-                break;
+                $db->close(); exit;
 
             case 'recent':
-                $limit = intval($_GET['limit'] ?? 20);
-                $limit = min($limit, 100);
-                $type = $_GET['type'] ?? '';
-                $where = "1=1";
-                if ($type) {
-                    $type = $db->real_escape_string($type);
-                    $where .= " AND call_type='$type'";
+                $limit = (int)($_GET['limit'] ?? 20);
+                $type  = isset($_GET['type']) ? $db->real_escape_string($_GET['type']) : '';
+                if (!$dbOk) {
+                    echo json_encode(['success' => true, 'data' => [], 'source' => 'fallback']);
+                    exit;
                 }
-                $r = $db->query("SELECT * FROM call_logs WHERE $where ORDER BY created_at DESC LIMIT $limit");
+                $where = $type ? "WHERE call_type = '$type'" : '';
+                $rs = $db->query("SELECT * FROM call_logs $where ORDER BY created_at DESC LIMIT $limit");
                 $rows = [];
-                if ($r) { while ($row = $r->fetch_assoc()) $rows[] = $row; }
+                if ($rs) { while ($r = $rs->fetch_assoc()) $rows[] = $r; }
                 echo json_encode(['success' => true, 'data' => $rows]);
-                break;
+                $db->close(); exit;
 
             case 'history':
-                $days = intval($_GET['days'] ?? 7);
-                $days = min($days, 90);
-                $from = date('Y-m-d', strtotime("-{$days} days"));
-                $r = $db->query("SELECT DATE(created_at) as day, call_type, COUNT(*) as c FROM call_logs WHERE DATE(created_at) >= '$from' GROUP BY DATE(created_at), call_type ORDER BY day DESC");
+                if (!$dbOk) {
+                    echo json_encode(['success' => true, 'data' => [], 'source' => 'fallback']);
+                    exit;
+                }
+                $days = (int)($_GET['days'] ?? 7);
+                $rs = $db->query("SELECT DATE(created_at) as d, COUNT(*) as c FROM call_logs WHERE created_at >= DATE_SUB(NOW(), INTERVAL $days DAY) GROUP BY DATE(created_at) ORDER BY d ASC");
                 $rows = [];
-                if ($r) { while ($row = $r->fetch_assoc()) $rows[] = $row; }
+                if ($rs) { while ($r = $rs->fetch_assoc()) $rows[] = $r; }
                 echo json_encode(['success' => true, 'data' => $rows]);
-                break;
+                $db->close(); exit;
 
             case 'operator_stats':
+                if (!$dbOk) {
+                    echo json_encode(['success' => true, 'data' => [], 'source' => 'fallback']);
+                    exit;
+                }
                 $today = date('Y-m-d');
-                $r = $db->query("SELECT operator_name, COUNT(*) as total_calls, 
-                    SUM(CASE WHEN call_type='emergency_code' THEN 1 ELSE 0 END) as emergencies,
-                    SUM(CASE WHEN call_type='call_doctor' THEN 1 ELSE 0 END) as doctor_pages,
-                    SUM(CASE WHEN call_type='call_staff' THEN 1 ELSE 0 END) as staff_calls,
-                    MAX(created_at) as last_call
-                    FROM call_logs WHERE DATE(created_at)='$today' AND operator_name IS NOT NULL AND operator_name != '' 
-                    GROUP BY operator_name ORDER BY total_calls DESC");
+                $rs = $db->query("SELECT operator_name, COUNT(*) as c FROM call_logs WHERE DATE(created_at)='$today' AND operator_name IS NOT NULL AND operator_name != '' GROUP BY operator_name ORDER BY c DESC LIMIT 10");
                 $rows = [];
-                if ($r) { while ($row = $r->fetch_assoc()) $rows[] = $row; }
+                if ($rs) { while ($r = $rs->fetch_assoc()) $rows[] = $r; }
                 echo json_encode(['success' => true, 'data' => $rows]);
-                break;
-
-            default:
-                echo json_encode(['success' => false, 'error' => 'Unknown action. Available: stats, recent, history, operator_stats']);
+                $db->close(); exit;
         }
-        break;
+        echo json_encode(['success' => false, 'error' => 'Unknown action']);
+        exit;
 
     case 'POST':
+        if (!$dbOk) {
+            echo json_encode(['success' => true, 'id' => 0, 'source' => 'fallback', 'note' => 'DB offline — log not persisted']);
+            exit;
+        }
         $d = json_decode(file_get_contents('php://input'), true);
         if (!$d || !isset($d['call_type'])) {
             echo json_encode(['success' => false, 'error' => 'call_type is required']);
@@ -118,18 +137,7 @@ switch ($method) {
         } else {
             echo json_encode(['success' => false, 'error' => $stmt->error]);
         }
-        break;
-
-    case 'DELETE':
-        $id = intval($_GET['id'] ?? 0);
-        if ($id > 0) {
-            $db->query("DELETE FROM call_logs WHERE id=$id");
-            echo json_encode(['success' => true]);
-        } else {
-            echo json_encode(['success' => false, 'error' => 'ID required']);
-        }
-        break;
-
-    default:
-        echo json_encode(['success' => false, 'error' => 'Method not supported']);
+        $db->close(); exit;
 }
+
+echo json_encode(['success' => false, 'error' => 'Invalid request']);
